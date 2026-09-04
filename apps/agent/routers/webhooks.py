@@ -36,7 +36,8 @@ async def gmail_pubsub_webhook(
 
         # Fetch latest inbox emails to sync into Supabase
         client = get_current_gmail_client()
-        recent_messages = client.list_messages(folder="inbox", max_results=10)
+        recent_res = client.list_messages(folder="inbox", max_results=10)
+        recent_messages = recent_res.get("messages", []) if isinstance(recent_res, dict) else recent_res
 
         supabase = get_supabase()
         if supabase and recent_messages:

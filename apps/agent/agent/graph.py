@@ -206,12 +206,39 @@ def parse_deterministic_intent(msg: str, ui_context: Dict[str, Any]) -> tuple[Op
             }
         }, f"Showing only unread emails received this week ({date_from} through {date_to})."
 
+    # Natural language: "from <sender> about <topic>"
+    from_about_match = re.search(
+        r"(?:find|search(?:\s+for)?|show(?:\s+me)?|get)(?:\s+(?:the|an|all))?\s+(?:emails?|messages?)?\s+from\s+([a-zA-Z0-9_.\s@-]+?)\s+(?:about|regarding)\s+(.+)$",
+        msg,
+        re.IGNORECASE
+    )
+    if from_about_match:
+        sender = from_about_match.group(1).strip()
+        keyword = from_about_match.group(2).strip().rstrip(".?!'\"")
+        return {
+            "name": "search_emails",
+            "arguments": {"sender": sender, "keyword": keyword, "folder": "inbox"}
+        }, f"Searched for emails from {sender} regarding '{keyword}'."
+
     # Test Phrase 3: "Find the email from Sarah about the project update"
     if "sarah" in m and "project" in m:
         return {
             "name": "search_emails",
             "arguments": {"sender": "Sarah", "keyword": "project update", "folder": "inbox"}
         }, "Searched for emails from Sarah regarding the project update."
+
+    # Natural language: "from <sender>" (e.g. "Find the email from AWS", "Open email from David")
+    from_sender_match = re.search(
+        r"(?:find|search(?:\s+for)?|show(?:\s+me)?|get|open)(?:\s+(?:the|an|all))?\s+(?:emails?|messages?|latest email)?\s+from\s+([a-zA-Z0-9_.@-]+(?:\s+[a-zA-Z0-9_.@-]+)?)\s*$",
+        msg,
+        re.IGNORECASE
+    )
+    if from_sender_match:
+        sender = from_sender_match.group(1).strip().rstrip(".?!")
+        return {
+            "name": "search_emails",
+            "arguments": {"sender": sender, "folder": "inbox"}
+        }, f"Searched for emails from {sender}."
 
     # Test Phrase 4: "Open the latest email from David"
     if "david" in m and ("open" in m or "latest" in m):
@@ -220,13 +247,39 @@ def parse_deterministic_intent(msg: str, ui_context: Dict[str, Any]) -> tuple[Op
             "arguments": {"sender": "David", "folder": "inbox"}
         }, "Found latest email from David and loaded it."
 
-    # Generic search
+    # Natural language: "Search for <topic>" or "Find <topic>"
+    search_for_match = re.search(
+        r"^(?:please\s+)?(?:search(?:\s+for)?|find|show(?:\s+me)?|look(?:\s+for)?)\s+(.+)$",
+        msg,
+        re.IGNORECASE
+    )
+    if search_for_match:
+        raw_target = search_for_match.group(1).strip()
+        # If target has "from <sender>"
+        sub_from = re.search(r"^(?:the\s+)?(?:emails?|messages?)?\s*from\s+([a-zA-Z0-9_.@-]+)\s*$", raw_target, re.IGNORECASE)
+        if sub_from:
+            sender = sub_from.group(1).strip().rstrip(".?!")
+            return {
+                "name": "search_emails",
+                "arguments": {"sender": sender, "folder": "inbox"}
+            }, f"Searched for emails from {sender}."
+
+        # Clean conversational prefixes like "the email about", "an email about"
+        cleaned_kw = re.sub(r"^(?:the|an|all)?\s*(?:emails?|messages?)?\s*(?:about|regarding|with|for)?\s*", "", raw_target, flags=re.IGNORECASE).strip().rstrip(".?!'\"")
+        if cleaned_kw:
+            return {
+                "name": "search_emails",
+                "arguments": {"keyword": cleaned_kw, "folder": "inbox"}
+            }, f"Searched for '{cleaned_kw}'."
+
+    # Generic search fallback
     if "search" in m or "find" in m or "show" in m:
         keyword = m.replace("search for", "").replace("search", "").replace("find", "").replace("show", "").strip()
+        cleaned = re.sub(r"^(?:the|an|all)?\s*(?:emails?|messages?)?\s*(?:about|regarding|with|for)?\s*", "", keyword, flags=re.IGNORECASE).strip().rstrip(".?!'\"")
         return {
             "name": "search_emails",
-            "arguments": {"keyword": keyword, "folder": "inbox"}
-        }, f"Searched for '{keyword}'."
+            "arguments": {"keyword": cleaned or keyword, "folder": "inbox"}
+        }, f"Searched for '{cleaned or keyword}'."
 
     return None, "I am ready. Tell me an action like drafting an email or filtering messages."
 

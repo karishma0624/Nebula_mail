@@ -140,15 +140,74 @@ def handle_oauth_callback(code: str = Query(...), state: Optional[str] = Query(N
 
     return {"status": "success", "email": _cached_user_email}
 
+@router.get("/emails/stats")
+def get_mailbox_stats():
+    """Get accurate total and unread counts for inbox and sent folders from Gmail labels."""
+    client = get_current_gmail_client()
+    inbox_stats = client.get_label_stats("INBOX")
+    sent_stats = client.get_label_stats("SENT")
+    return {
+        "inbox": inbox_stats,
+        "sent": sent_stats
+    }
+
 @router.get("/emails/list")
 def list_emails(
     folder: str = Query("inbox", enum=["inbox", "sent", "draft"]),
     q: Optional[str] = Query(None),
-    limit: int = Query(25, ge=1, le=100)
+    limit: int = Query(25, ge=1, le=100),
+    page_token: Optional[str] = Query(None),
+    unread_only: bool = Query(False)
 ):
     client = get_current_gmail_client()
-    messages = client.list_messages(folder=folder, query=q or "", max_results=limit)
-    return {"emails": messages, "count": len(messages)}
+    
+    query_parts = []
+    if q and q.strip():
+        query_parts.append(q.strip())
+    if unread_only:
+        query_parts.append("is:unread")
+
+    full_query = " ".join(query_parts)
+
+    list_res = client.list_messages(
+        folder=folder, 
+        query=full_query, 
+        max_results=limit, 
+        page_token=page_token
+    )
+    
+    emails = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
+    next_page_token = list_res.get("next_page_token") if isinstance(list_res, dict) else None
+    result_size_estimate = list_res.get("result_size_estimate", len(emails)) if isinstance(list_res, dict) else len(emails)
+
+    is_search = bool(q and q.strip())
+    response_data: Dict[str, Any] = {
+        "emails": emails,
+        "count": len(emails),
+        "next_page_token": next_page_token,
+        "result_size_estimate": result_size_estimate,
+        "is_search": is_search,
+        "is_unread_only": unread_only,
+    }
+
+    stats = client.get_label_stats(label_id=folder.upper())
+    total_folder = stats.get("total", len(emails))
+    unread_folder = stats.get("unread", 0)
+
+    if is_search:
+        response_data["search_query"] = q.strip()
+        response_data["search_total_estimate"] = result_size_estimate
+        response_data["total_count"] = result_size_estimate
+        response_data["unread_count"] = unread_folder
+    elif unread_only:
+        # In unread-only mode, total count represents total unread messages in the folder
+        response_data["total_count"] = unread_folder
+        response_data["unread_count"] = unread_folder
+    else:
+        response_data["total_count"] = total_folder
+        response_data["unread_count"] = unread_folder
+
+    return response_data
 
 @router.get("/emails/{email_id}")
 def get_email_detail(email_id: str):

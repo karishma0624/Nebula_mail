@@ -22,11 +22,13 @@ export const Sidebar: React.FC = () => {
     userEmail, 
     setAuthenticated,
     isAssistantOpen,
-    toggleAssistant 
+    toggleAssistant,
+    unreadMessages,
+    sentTotal
   } = useMailStore();
 
-  const unreadCount = emails.filter(e => e.folder === 'inbox' && e.is_unread).length;
-  const sentCount = emails.filter(e => e.folder === 'sent').length;
+  const unreadCount = unreadMessages > 0 ? unreadMessages : emails.filter(e => e.folder === 'inbox' && e.is_unread).length;
+  const sentCount = sentTotal > 0 ? sentTotal : emails.filter(e => e.folder === 'sent').length;
 
   const navItems: { id: ViewType; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'inbox', label: 'Inbox', icon: <Inbox size={18} />, badge: unreadCount },

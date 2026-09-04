@@ -11,8 +11,14 @@ class GmailClient:
         self.credentials = credentials
         self.service = build('gmail', 'v1', credentials=credentials) if credentials else None
 
-    def list_messages(self, folder: str = "inbox", query: str = "", max_results: int = 25) -> List[Dict[str, Any]]:
-        """List messages from Gmail, filtering by folder and search query."""
+    def list_messages(
+        self, 
+        folder: str = "inbox", 
+        query: str = "", 
+        max_results: int = 25,
+        page_token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """List messages from Gmail, filtering by folder and search query with native page-token pagination."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
 
@@ -31,13 +37,20 @@ class GmailClient:
         full_query = " ".join(q_parts)
 
         try:
-            results = self.service.users().messages().list(
-                userId="me",
-                q=full_query,
-                maxResults=max_results
-            ).execute()
+            list_params: Dict[str, Any] = {
+                "userId": "me",
+                "q": full_query,
+                "maxResults": max_results,
+            }
+            if page_token:
+                list_params["pageToken"] = page_token
+
+            results = self.service.users().messages().list(**list_params).execute()
 
             messages = results.get("messages", [])
+            next_page_token = results.get("nextPageToken")
+            result_size_estimate = results.get("resultSizeEstimate", len(messages))
+
             detailed_messages = []
             for msg_meta in messages:
                 try:
@@ -47,10 +60,31 @@ class GmailClient:
                 except Exception as e:
                     print(f"Error fetching message {msg_meta['id']}: {e}")
 
-            return detailed_messages
+            return {
+                "messages": detailed_messages,
+                "next_page_token": next_page_token,
+                "result_size_estimate": result_size_estimate,
+            }
         except HttpError as error:
             print(f"Gmail API error in list_messages: {error}")
             raise error
+
+    def get_label_stats(self, label_id: str = "INBOX") -> Dict[str, int]:
+        """Get total and unread message counts for a Gmail label (e.g. INBOX, SENT)."""
+        if not self.service:
+            raise ValueError("Gmail client not initialized with valid credentials")
+
+        normalized_label = label_id.upper() if label_id.lower() in ["inbox", "sent", "draft", "trash", "spam"] else label_id
+
+        try:
+            label_info = self.service.users().labels().get(userId="me", id=normalized_label).execute()
+            return {
+                "total": int(label_info.get("messagesTotal", 0)),
+                "unread": int(label_info.get("messagesUnread", 0)),
+            }
+        except HttpError as error:
+            print(f"Gmail API error in get_label_stats: {error}")
+            return {"total": 0, "unread": 0}
 
     def get_message(self, message_id: str) -> Optional[Dict[str, Any]]:
         """Fetch full details for a message by ID."""

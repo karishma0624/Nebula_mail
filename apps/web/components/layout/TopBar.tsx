@@ -6,34 +6,67 @@ import { useMailStore } from '../../lib/store';
 
 interface TopBarProps {
   onRefresh?: () => void;
+  onSearch?: (query: string) => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ onRefresh }) => {
+export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
   const { 
     currentView, 
-    activeFilters, 
-    setFilters, 
-    resetFilters,
     isAuthenticated,
     isAssistantOpen, 
     toggleAssistant,
-    isLoadingEmails
+    isLoadingEmails,
+    isSearchActive,
+    setSearchResults,
+    clearSearch,
+    setLoadingEmails
   } = useMailStore();
 
-  const [keywordInput, setKeywordInput] = useState(activeFilters.keyword || '');
+  const [keywordInput, setKeywordInput] = useState('');
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (keywordInput.trim()) {
-      setFilters({ keyword: keywordInput.trim() });
-    } else {
-      setFilters({ keyword: undefined });
+    const query = keywordInput.trim();
+    if (!query) {
+      clearSearch();
+      if (onRefresh) onRefresh();
+      return;
     }
+
+    if (onSearch) {
+      onSearch(query);
+      return;
+    }
+
+    const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+    setLoadingEmails(true);
+    try {
+      const res = await fetch(`${apiUrl}/emails/list?q=${encodeURIComponent(query)}&limit=25`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(
+          data.emails || [],
+          query,
+          data.result_size_estimate ?? data.count ?? (data.emails ? data.emails.length : 0),
+          data.next_page_token || null
+        );
+      }
+    } catch (err) {
+      console.error('Failed to search Gmail from top bar:', err);
+    } finally {
+      setLoadingEmails(false);
+    }
+  };
+
+  const handleClear = () => {
+    setKeywordInput('');
+    clearSearch();
+    if (onRefresh) onRefresh();
   };
 
   const getTitle = () => {
     switch (currentView) {
-      case 'inbox': return 'Inbox';
+      case 'inbox': return isSearchActive ? 'Search Results' : 'Inbox';
       case 'sent': return 'Sent Mail';
       case 'compose': return 'Compose';
       case 'detail': return 'Email Details';
@@ -62,7 +95,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh }) => {
         </div>
       </div>
 
-      {/* Global Search Bar */}
+      {/* Global Gmail Search Bar */}
       <form onSubmit={handleSearchSubmit} className="flex-1 max-w-xl">
         <div className="relative">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -70,17 +103,14 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh }) => {
             type="text"
             value={keywordInput}
             onChange={(e) => setKeywordInput(e.target.value)}
-            placeholder="Search mail by keyword, subject, or sender..."
-            className="w-full bg-slate-800/60 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition duration-150"
+            placeholder="Search all Gmail by keyword, subject, or from:sender..."
+            className="w-full bg-slate-800/60 border border-slate-700/80 rounded-xl pl-10 pr-12 py-2 text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition duration-150"
           />
-          {activeFilters.keyword && (
+          {(keywordInput || isSearchActive) && (
             <button
               type="button"
-              onClick={() => {
-                setKeywordInput('');
-                setFilters({ keyword: undefined });
-              }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/50 px-1.5 py-0.5 rounded"
+              onClick={handleClear}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/60 hover:bg-slate-700 px-2 py-0.5 rounded-md transition"
             >
               Clear
             </button>

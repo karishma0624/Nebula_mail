@@ -90,7 +90,10 @@ def search_emails(args: SearchEmailsInput) -> Dict[str, Any]:
     for attempt in range(retries + 1):
         try:
             client = get_current_gmail_client()
-            messages = client.list_messages(folder=args.folder or "inbox", query=query_str, max_results=20)
+            list_res = client.list_messages(folder=args.folder or "inbox", query=query_str, max_results=25)
+            messages = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
+            next_page_token = list_res.get("next_page_token") if isinstance(list_res, dict) else None
+            result_size_estimate = list_res.get("result_size_estimate", len(messages)) if isinstance(list_res, dict) else len(messages)
             res = {
                 "folder": args.folder or "inbox",
                 "query": query_str,
@@ -100,7 +103,9 @@ def search_emails(args: SearchEmailsInput) -> Dict[str, Any]:
                 "date_to": args.date_to,
                 "unread_only": args.unread_only,
                 "count": len(messages),
-                "emails": messages
+                "emails": messages,
+                "next_page_token": next_page_token,
+                "result_size_estimate": result_size_estimate,
             }
             log_tool_audit("search_emails", args.model_dump(), res, "executed")
             return res
@@ -174,7 +179,8 @@ def list_recent(args: ListRecentInput) -> Dict[str, Any]:
     """List recent emails from a given folder."""
     try:
         client = get_current_gmail_client()
-        messages = client.list_messages(folder=args.folder, query="", max_results=args.limit)
+        list_res = client.list_messages(folder=args.folder, query="", max_results=args.limit)
+        messages = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
         res = {"folder": args.folder, "count": len(messages), "emails": messages}
         log_tool_audit("list_recent", args.model_dump(), res, "executed")
         return res

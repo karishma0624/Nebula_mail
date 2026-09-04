@@ -16,6 +16,19 @@ interface MailState {
   isLoadingEmails: boolean;
   isAssistantOpen: boolean;
 
+  // Pagination & Mailbox Stats
+  currentPage: number;
+  nextPageToken: string | null;
+  pageTokenHistory: (string | null)[];
+  totalMessages: number;
+  unreadMessages: number;
+  sentTotal: number;
+
+  // Search Mode State
+  isSearchActive: boolean;
+  searchQueryDescription: string | null;
+  searchResultEstimate: number | null;
+
   // Actions
   setAuthenticated: (status: boolean, email?: string) => void;
   setView: (view: ViewType) => void;
@@ -32,6 +45,12 @@ interface MailState {
   setAssistantOpen: (open: boolean) => void;
   setLoadingEmails: (loading: boolean) => void;
   applyLocalFilters: () => void;
+
+  // Pagination & Search Actions
+  setPaginationData: (page: number, nextToken: string | null, total?: number, unread?: number) => void;
+  setMailboxStats: (stats: { total?: number; unread?: number; sentTotal?: number }) => void;
+  setSearchResults: (emails: Email[], queryDesc: string, estimate?: number, nextToken?: string | null) => void;
+  clearSearch: () => void;
 }
 
 const initialDraft: ComposeDraft = {
@@ -55,12 +74,40 @@ export const useMailStore = create<MailState>((set, get) => ({
   isLoadingEmails: false,
   isAssistantOpen: true,
 
+  currentPage: 1,
+  nextPageToken: null,
+  pageTokenHistory: [null],
+  totalMessages: 0,
+  unreadMessages: 0,
+  sentTotal: 0,
+
+  isSearchActive: false,
+  searchQueryDescription: null,
+  searchResultEstimate: null,
+
   setAuthenticated: (status, email) => set({ 
     isAuthenticated: status, 
     userEmail: email || null 
   }),
 
-  setView: (view) => set({ currentView: view }),
+  setView: (view) => {
+    const current = get().currentView;
+    if (view !== 'detail' && view !== current) {
+      // Reset pagination when switching primary view folders
+      set({ 
+        currentView: view,
+        currentPage: 1,
+        nextPageToken: null,
+        pageTokenHistory: [null],
+        isSearchActive: false,
+        searchQueryDescription: null,
+        searchResultEstimate: null
+      });
+    } else {
+      set({ currentView: view });
+    }
+    get().applyLocalFilters();
+  },
 
   setOpenEmail: (email) => set({ 
     openEmail: email,
@@ -74,7 +121,12 @@ export const useMailStore = create<MailState>((set, get) => ({
 
   setFilters: (filters) => {
     set((state) => ({
-      activeFilters: { ...state.activeFilters, ...filters }
+      activeFilters: { ...state.activeFilters, ...filters },
+      ...(filters.unread_only !== undefined ? {
+        currentPage: 1,
+        nextPageToken: null,
+        pageTokenHistory: [null]
+      } : {})
     }));
     get().applyLocalFilters();
   },
@@ -108,33 +160,87 @@ export const useMailStore = create<MailState>((set, get) => ({
 
   setLoadingEmails: (loading) => set({ isLoadingEmails: loading }),
 
+  setPaginationData: (page, nextToken, total, unread) => {
+    set((state) => {
+      const history = [...state.pageTokenHistory];
+      // Ensure history index for this page exists
+      if (page > history.length) {
+        history.push(nextToken);
+      } else if (nextToken && history[page] !== nextToken) {
+        history[page] = nextToken;
+      }
+      return {
+        currentPage: page,
+        nextPageToken: nextToken,
+        pageTokenHistory: history,
+        ...(total !== undefined ? { totalMessages: total } : {}),
+        ...(unread !== undefined ? { unreadMessages: unread } : {})
+      };
+    });
+  },
+
+  setMailboxStats: (stats) => {
+    set((state) => ({
+      ...(stats.total !== undefined ? { totalMessages: stats.total } : {}),
+      ...(stats.unread !== undefined ? { unreadMessages: stats.unread } : {}),
+      ...(stats.sentTotal !== undefined ? { sentTotal: stats.sentTotal } : {})
+    }));
+  },
+
+  setSearchResults: (emails, queryDesc, estimate, nextToken = null) => {
+    set({
+      emails,
+      filteredEmails: emails,
+      isSearchActive: true,
+      searchQueryDescription: queryDesc,
+      searchResultEstimate: estimate !== undefined ? estimate : emails.length,
+      currentPage: 1,
+      nextPageToken: nextToken,
+      pageTokenHistory: [null],
+      currentView: 'inbox'
+    });
+  },
+
+  clearSearch: () => {
+    set({
+      isSearchActive: false,
+      searchQueryDescription: null,
+      searchResultEstimate: null,
+      currentPage: 1,
+      nextPageToken: null,
+      pageTokenHistory: [null]
+    });
+  },
+
   applyLocalFilters: () => {
-    const { emails, activeFilters, currentView } = get();
+    const { emails, activeFilters, currentView, isSearchActive } = get();
     let result = [...emails];
 
-    // Filter by view folder if appropriate
-    if (currentView === 'inbox') {
-      result = result.filter(e => e.folder === 'inbox');
-    } else if (currentView === 'sent') {
-      result = result.filter(e => e.folder === 'sent');
+    // If search mode is active, do not discard emails by folder or keyword mismatch
+    if (!isSearchActive) {
+      if (currentView === 'inbox') {
+        result = result.filter(e => e.folder === 'inbox');
+      } else if (currentView === 'sent') {
+        result = result.filter(e => e.folder === 'sent');
+      }
+
+      if (activeFilters.sender) {
+        const s = activeFilters.sender.toLowerCase();
+        result = result.filter(e => e.sender.toLowerCase().includes(s));
+      }
+
+      if (activeFilters.keyword) {
+        const kw = activeFilters.keyword.toLowerCase();
+        result = result.filter(e => 
+          e.subject.toLowerCase().includes(kw) || 
+          e.snippet.toLowerCase().includes(kw)
+        );
+      }
     }
 
-    // Apply active filter criteria
+    // Unread filter applies in both normal and search view
     if (activeFilters.unread_only) {
       result = result.filter(e => e.is_unread);
-    }
-
-    if (activeFilters.sender) {
-      const s = activeFilters.sender.toLowerCase();
-      result = result.filter(e => e.sender.toLowerCase().includes(s));
-    }
-
-    if (activeFilters.keyword) {
-      const kw = activeFilters.keyword.toLowerCase();
-      result = result.filter(e => 
-        e.subject.toLowerCase().includes(kw) || 
-        e.snippet.toLowerCase().includes(kw)
-      );
     }
 
     if (activeFilters.date_from) {

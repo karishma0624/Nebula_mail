@@ -59,3 +59,21 @@ export interface UIContext {
   } | null;
   active_filters: FilterCriteria;
 }
+
+export interface MailboxStats {
+  total: number;
+  unread: number;
+}
+
+export interface EmailListResponse {
+  emails: Email[];
+  count: number;
+  next_page_token?: string | null;
+  result_size_estimate?: number;
+  is_search?: boolean;
+  search_query?: string;
+  search_total_estimate?: number;
+  total_count?: number;
+  unread_count?: number;
+  is_unread_only?: boolean;
+}

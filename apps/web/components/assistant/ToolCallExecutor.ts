@@ -64,9 +64,49 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       break;
     }
 
-    case 'search_emails':
+    case 'search_emails': {
+      const folder = args.folder === 'sent' ? 'sent' : 'inbox';
+      store.setView(folder);
+
+      // Construct descriptive summary of query
+      const parts: string[] = [];
+      if (args.sender) parts.push(`from:${args.sender}`);
+      if (args.keyword) parts.push(args.keyword);
+      if (args.unread_only) parts.push('is:unread');
+      if (args.date_from) parts.push(`after:${args.date_from}`);
+      if (args.date_to) parts.push(`before:${args.date_to}`);
+      const queryDesc = parts.join(' ') || 'Mailbox Search';
+
+      if (toolCall.result?.emails && Array.isArray(toolCall.result.emails)) {
+        const emails = toolCall.result.emails;
+        const estimate = toolCall.result.result_size_estimate ?? toolCall.result.count ?? emails.length;
+        const nextToken = toolCall.result.next_page_token || null;
+        store.setSearchResults(emails, queryDesc, estimate, nextToken);
+      } else {
+        // Fallback: Query backend directly using the constructed Gmail query
+        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+        store.setLoadingEmails(true);
+        try {
+          const res = await fetch(`${apiUrl}/emails/list?folder=${folder}&q=${encodeURIComponent(queryDesc)}&limit=25`);
+          if (res.ok) {
+            const data = await res.json();
+            store.setSearchResults(
+              data.emails || [],
+              queryDesc,
+              data.result_size_estimate ?? data.count ?? (data.emails ? data.emails.length : 0),
+              data.next_page_token || null
+            );
+          }
+        } catch (err) {
+          console.error('Failed to retrieve search results in ToolCallExecutor:', err);
+        } finally {
+          store.setLoadingEmails(false);
+        }
+      }
+      break;
+    }
+
     case 'apply_filters': {
-      // Extract filter criteria
       const criteria: Partial<FilterCriteria> = {
         sender: args.sender || undefined,
         keyword: args.keyword || undefined,
@@ -77,9 +117,6 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       };
 
       store.setView(criteria.folder === 'sent' ? 'sent' : 'inbox');
-      if (toolCall.result?.emails && Array.isArray(toolCall.result.emails) && toolCall.result.emails.length > 0) {
-        store.setEmails(toolCall.result.emails);
-      }
       store.setFilters(criteria);
       break;
     }

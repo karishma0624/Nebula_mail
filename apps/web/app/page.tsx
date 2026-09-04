@@ -20,7 +20,14 @@ export default function MailApp() {
     setAuthenticated, 
     currentView, 
     setEmails, 
-    setLoadingEmails 
+    setLoadingEmails,
+    currentPage,
+    nextPageToken,
+    pageTokenHistory,
+    setPaginationData,
+    setMailboxStats,
+    isSearchActive,
+    clearSearch
   } = useMailStore();
 
   // Check backend auth status
@@ -40,23 +47,77 @@ export default function MailApp() {
     return false;
   }, [setAuthenticated]);
 
-  // Fetch real emails from Gmail backend
-  const fetchEmails = useCallback(async () => {
+  // Fetch real mailbox statistics independently
+  const fetchMailboxStats = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await fetch(`${AGENT_API_URL}/emails/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setMailboxStats({
+          total: data.inbox?.total,
+          unread: data.inbox?.unread,
+          sentTotal: data.sent?.total
+        });
+      }
+    } catch (e) {
+      console.warn('Unable to fetch mailbox statistics:', e);
+    }
+  }, [isAuthenticated, setMailboxStats]);
+
+  const unreadOnly = useMailStore((state) => state.activeFilters.unread_only);
+
+  // Fetch real emails from Gmail backend with native page tokens
+  const fetchEmails = useCallback(async (pageToken: string | null = null, pageNumber: number = 1) => {
     if (!isAuthenticated) return;
     setLoadingEmails(true);
     try {
       const folder = currentView === 'sent' ? 'sent' : 'inbox';
-      const res = await fetch(`${AGENT_API_URL}/emails/list?folder=${folder}`);
+      let url = `${AGENT_API_URL}/emails/list?folder=${folder}&limit=25`;
+      const isUnread = useMailStore.getState().activeFilters.unread_only;
+      if (isUnread) {
+        url += `&unread_only=true`;
+      }
+      if (pageToken) {
+        url += `&page_token=${encodeURIComponent(pageToken)}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setEmails(data.emails || []);
+        setPaginationData(
+          pageNumber, 
+          data.next_page_token || null, 
+          data.total_count, 
+          data.unread_count
+        );
       }
     } catch (err) {
       console.error('Failed to load Gmail messages:', err);
     } finally {
       setLoadingEmails(false);
     }
-  }, [isAuthenticated, currentView, setEmails, setLoadingEmails]);
+  }, [isAuthenticated, currentView, setEmails, setLoadingEmails, setPaginationData]);
+
+  // Pagination navigation handlers
+  const handleNextPage = useCallback(() => {
+    if (nextPageToken) {
+      fetchEmails(nextPageToken, currentPage + 1);
+    }
+  }, [nextPageToken, currentPage, fetchEmails]);
+
+  const handlePrevPage = useCallback(() => {
+    if (currentPage > 1) {
+      const targetPage = currentPage - 1;
+      const targetToken = pageTokenHistory[targetPage - 1] ?? null;
+      fetchEmails(targetToken, targetPage);
+    }
+  }, [currentPage, pageTokenHistory, fetchEmails]);
+
+  const handleClearSearch = useCallback(() => {
+    clearSearch();
+    fetchEmails(null, 1);
+  }, [clearSearch, fetchEmails]);
 
   useEffect(() => {
     checkAuthStatus();
@@ -64,18 +125,27 @@ export default function MailApp() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchEmails();
+      fetchEmails(null, 1);
+      fetchMailboxStats();
     }
-  }, [isAuthenticated, currentView, fetchEmails]);
+  }, [isAuthenticated, currentView, unreadOnly, fetchEmails, fetchMailboxStats]);
 
-  // Fallback 15-second polling sync per priority specification
+  // Fallback 15-second polling sync
+  // When active search is running, polling ONLY updates mailbox statistics and NEVER overwrites search results!
   useEffect(() => {
     if (!isAuthenticated) return;
     const interval = setInterval(() => {
-      fetchEmails();
+      const state = useMailStore.getState();
+      if (state.isSearchActive) {
+        fetchMailboxStats();
+      } else if (state.currentPage === 1) {
+        fetchEmails(null, 1);
+      } else {
+        fetchMailboxStats();
+      }
     }, 15000);
     return () => clearInterval(interval);
-  }, [isAuthenticated, fetchEmails]);
+  }, [isAuthenticated, fetchEmails, fetchMailboxStats]);
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-nebula-950 font-sans">
@@ -84,7 +154,13 @@ export default function MailApp() {
 
       {/* 2. Main Mail Workspace */}
       <section className="flex-1 flex flex-col h-full overflow-hidden">
-        <TopBar onRefresh={fetchEmails} />
+        <TopBar onRefresh={() => {
+          if (useMailStore.getState().isSearchActive) {
+            handleClearSearch();
+          } else {
+            fetchEmails(null, 1);
+          }
+        }} />
 
         {/* Center Workspace View Handling */}
         {currentView === 'compose' ? (
@@ -105,7 +181,11 @@ export default function MailApp() {
               {currentView === 'detail' ? (
                 <EmailDetail />
               ) : (
-                <EmailList />
+                <EmailList 
+                  onNextPage={handleNextPage}
+                  onPrevPage={handlePrevPage}
+                  onClearSearch={handleClearSearch}
+                />
               )}
             </div>
           </div>
