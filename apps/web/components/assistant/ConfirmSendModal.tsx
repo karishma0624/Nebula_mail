@@ -37,6 +37,7 @@ export const ConfirmSendModal: React.FC = () => {
           subject: activeDraft.subject,
           body: activeDraft.body,
           thread_id: activeDraft.thread_id,
+          reply_to_id: activeDraft.reply_to_id,
         }),
       });
 
@@ -84,7 +85,16 @@ export const ConfirmSendModal: React.FC = () => {
               <ShieldAlert size={18} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Confirm Email Transmission</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {draftToSend.reply_to_id ? 'Confirm Reply Transmission' : 'Confirm Email Transmission'}
+                </h3>
+                {draftToSend.reply_to_id && (
+                  <span className="text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                    Thread Reply
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">Human-in-the-loop safety boundary</p>
             </div>
           </div>
@@ -98,7 +108,7 @@ export const ConfirmSendModal: React.FC = () => {
 
         {/* Warning banner */}
         <div className="p-3 rounded-xl bg-blue-50 dark:bg-indigo-950/40 border border-blue-200 dark:border-indigo-500/30 text-xs text-blue-900 dark:text-indigo-200 leading-relaxed">
-          Nebula Copilot has prepared this message for dispatch. As an intentional safety guardrail, emails are never dispatched autonomously without your explicit authorization.
+          Nebula Copilot has prepared this {draftToSend.reply_to_id ? 'reply' : 'message'} for dispatch. As an intentional safety guardrail, emails are never dispatched autonomously without your explicit authorization.
         </div>
 
         {/* Preview of the draft */}
@@ -138,29 +148,29 @@ export const ConfirmSendModal: React.FC = () => {
                     console.error('Failed to get OAuth URL:', e);
                   }
                 }}
-                className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-xl text-xs font-semibold shadow-md transition"
+                className="mt-1 inline-block text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
               >
-                <span>Sign in with Google now</span>
+                Reconnect Google Account &rarr;
               </button>
             )}
           </div>
         )}
 
         {/* Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <button
             type="button"
             onClick={handleCancel}
             disabled={isSending}
-            className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
           >
-            Back to Edit
+            Cancel
           </button>
           <button
             type="button"
             onClick={handleConfirmSend}
             disabled={isSending}
-            className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
+            className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-lg shadow-emerald-600/30 transition disabled:opacity-50"
           >
             {isSending ? (
               <>
@@ -170,7 +180,7 @@ export const ConfirmSendModal: React.FC = () => {
             ) : (
               <>
                 <Send size={13} />
-                <span>Confirm & Send</span>
+                <span>{draftToSend.reply_to_id ? 'Confirm & Send Reply' : 'Confirm & Send'}</span>
               </>
             )}
           </button>

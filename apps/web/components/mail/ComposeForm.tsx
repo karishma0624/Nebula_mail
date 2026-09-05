@@ -29,7 +29,9 @@ export const ComposeForm: React.FC = () => {
       {/* Compose header */}
       <div className="p-4 px-6 border-b border-slate-800/80 bg-nebula-900/60 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h3 className="text-base font-semibold text-white">New Message</h3>
+          <h3 className="text-base font-semibold text-white">
+            {composeDraft.reply_to_id ? 'Reply to Message' : 'New Message'}
+          </h3>
           {isTypingCompose && (
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 animate-pulse">
               <Sparkles size={12} className="text-cyan-400" />

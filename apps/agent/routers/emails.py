@@ -22,12 +22,14 @@ class SendEmailRequest(BaseModel):
     body: str
     thread_id: Optional[str] = None
     draft_id: Optional[str] = None
+    reply_to_id: Optional[str] = None
 
 class DraftEmailRequest(BaseModel):
     to: str
     subject: str
     body: str
     thread_id: Optional[str] = None
+    reply_to_id: Optional[str] = None
 
 def get_current_gmail_client() -> GmailClient:
     global _cached_credentials
@@ -290,7 +292,8 @@ def create_draft(req: DraftEmailRequest):
         to=req.to,
         subject=req.subject,
         body=req.body,
-        thread_id=req.thread_id
+        thread_id=req.thread_id,
+        reply_to_message_id=req.reply_to_id
     )
     return {"status": "draft_created", "draft": draft}
 
@@ -317,7 +320,8 @@ def send_email(req: SendEmailRequest):
             to=req.to,
             subject=req.subject,
             body=req.body,
-            thread_id=req.thread_id
+            thread_id=req.thread_id,
+            reply_to_message_id=req.reply_to_id
         )
         try:
             from agent.tools import log_tool_audit

@@ -287,8 +287,8 @@ class GmailClient:
 
         return body_text, body_html
 
-    def create_draft(self, to: str, subject: str, body: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
-        """Create an email draft in Gmail with proper RFC-compliant MIME headers."""
+    def create_draft(self, to: str, subject: str, body: str, thread_id: Optional[str] = None, reply_to_message_id: Optional[str] = None) -> Dict[str, Any]:
+        """Create an email draft in Gmail with proper RFC-compliant MIME headers and threading support."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
 
@@ -301,6 +301,17 @@ class GmailClient:
         message["Date"] = formatdate(localtime=True)
         message["Message-ID"] = make_msgid()
         message["MIME-Version"] = "1.0"
+
+        if reply_to_message_id:
+            try:
+                orig = self.get_message(reply_to_message_id)
+                if orig:
+                    thread_id = thread_id or orig.get("thread_id")
+                orig_ref = f"<{reply_to_message_id}@mail.gmail.com>"
+                message["In-Reply-To"] = orig_ref
+                message["References"] = orig_ref
+            except Exception as e:
+                print(f"Notice setting In-Reply-To in draft: {e}")
 
         try:
             profile = self.service.users().getProfile(userId="me").execute()
@@ -318,8 +329,8 @@ class GmailClient:
         draft = self._exec_with_retry(lambda: self.service.users().drafts().create(userId="me", body=draft_body).execute())
         return draft
 
-    def send_message(self, to: str, subject: str, body: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
-        """Send an email via Gmail API with proper RFC-compliant MIME headers to reduce spam risk."""
+    def send_message(self, to: str, subject: str, body: str, thread_id: Optional[str] = None, reply_to_message_id: Optional[str] = None) -> Dict[str, Any]:
+        """Send an email via Gmail API with proper RFC-compliant MIME headers and threading support."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
 
@@ -332,6 +343,17 @@ class GmailClient:
         message["Date"] = formatdate(localtime=True)
         message["Message-ID"] = make_msgid()
         message["MIME-Version"] = "1.0"
+
+        if reply_to_message_id:
+            try:
+                orig = self.get_message(reply_to_message_id)
+                if orig:
+                    thread_id = thread_id or orig.get("thread_id")
+                orig_ref = f"<{reply_to_message_id}@mail.gmail.com>"
+                message["In-Reply-To"] = orig_ref
+                message["References"] = orig_ref
+            except Exception as e:
+                print(f"Notice setting In-Reply-To in send: {e}")
 
         try:
             profile = self.service.users().getProfile(userId="me").execute()

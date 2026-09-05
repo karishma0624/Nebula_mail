@@ -28,6 +28,11 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       store.setView('compose');
       store.setIsTypingCompose(true);
       store.resetComposeDraft();
+      store.setComposeDraft({
+        draft_id: args.draft_id || undefined,
+        reply_to_id: args.reply_to_id || undefined,
+        thread_id: args.thread_id || undefined,
+      });
 
       const to = args.to || '';
       const subject = args.subject || '';
@@ -180,8 +185,9 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       const subject = args.subject !== undefined ? args.subject : '';
       const body = args.body !== undefined ? args.body : '';
       const thread_id = args.thread_id || undefined;
+      const reply_to_id = args.reply_to_id || undefined;
 
-      const freshDraft = { draft_id, to, subject, body, thread_id };
+      const freshDraft = { draft_id, to, subject, body, thread_id, reply_to_id };
 
       // Update composeDraft directly to guarantee zero drift
       store.setComposeDraft(freshDraft);

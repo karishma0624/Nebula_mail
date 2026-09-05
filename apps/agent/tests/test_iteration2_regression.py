@@ -303,3 +303,136 @@ def test_section_24_per_message_actions_and_aws_invoice_grounded_qa():
             })
             assert res.status_code == 200
             assert res.json().get("status") == "success"
+
+
+def test_section_25_reply_to_natural_language_email():
+    """Section 25: Reply to email described in natural language resolves target email, reply_to_id, sender, and Re: subject"""
+    # 1. Test resolving target email from description with specific body
+    seed_email = {
+        "id": "msg-class-prep-1",
+        "sender": "Karishma Sivakumar <karis@example.com>",
+        "subject": "Re: reg online class",
+        "snippet": "Please check what to prepare for the online class tomorrow.",
+        "thread_id": "thread-class-123"
+    }
+    with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email):
+        tool_calls, reply = parse_deterministic_intent("reply to the mail about what to prepare for the class saying I will be there", {})
+        assert tool_calls is not None
+        assert isinstance(tool_calls, list)
+        assert len(tool_calls) == 2
+        draft_tc = tool_calls[0]
+        prepare_tc = tool_calls[1]
+
+        assert draft_tc["name"] == "draft_compose"
+        assert prepare_tc["name"] == "prepare_send"
+
+        args = draft_tc["arguments"]
+        assert args["reply_to_id"] == "msg-class-prep-1"
+        assert args["to"] == "Karishma Sivakumar <karis@example.com>"
+        assert args["subject"] == "Re: reg online class"
+        assert "I will be there" in args["body"]
+        assert args["thread_id"] == "thread-class-123"
+
+    # 2. Test when no matching email is found (must say so plainly, never invent an unrelated draft)
+    with patch("agent.graph.resolve_target_email_for_reply", return_value=None):
+        tc_none, reply_none = parse_deterministic_intent("reply to the mail about non_existing_weird_email_topic_xyz_999", {})
+        assert tc_none is None
+        assert "couldn't find an email" in reply_none.lower()
+
+
+def test_section_26_unified_send_mode_across_compose_reply_forward():
+    """Section 26: Unified send_mode gates compose, natural-language reply, and forward identically"""
+    seed_email_reply = {
+        "id": "msg-class-prep-1",
+        "sender": "Karishma Sivakumar <karis@example.com>",
+        "subject": "Re: reg online class",
+        "snippet": "Please check what to prepare for the online class tomorrow.",
+        "thread_id": "thread-class-123"
+    }
+    seed_email_fwd = {
+        "id": "msg-sarah-1",
+        "sender": "Sarah <sarah@company.com>",
+        "subject": "Project Update",
+        "snippet": "Here is the project update.",
+        "thread_id": "thread-sarah-123"
+    }
+
+    # --- Mode A: Automatic Send Mode ---
+    # With Send Mode = automatic, all three skip confirmation modal and send directly, logged as auto_executed
+    with patch("routers.emails.get_user_settings", return_value={"send_mode": "automatic"}):
+        with patch("routers.emails.get_current_gmail_client") as mock_client_getter:
+            mock_gmail = mock_client_getter.return_value
+            mock_gmail.send_message.return_value = {"id": "sent-msg-auto"}
+            with patch("agent.tools.log_tool_audit") as mock_audit:
+                # (a) Direct compose
+                tc_a, rep_a = parse_deterministic_intent("Send an email to user@test.com with subject 'Meeting' and body 'hello'", {})
+                assert len(tc_a) == 1
+                assert tc_a[0]["name"] == "draft_compose"
+                assert "automatically sent" in rep_a.lower()
+                mock_gmail.send_message.assert_called_with(
+                    to="user@test.com",
+                    subject="Meeting",
+                    body="hello",
+                    thread_id=None,
+                    reply_to_message_id=None
+                )
+                mock_audit.assert_called_with("send_email", tc_a[0]["arguments"], {"id": "sent-msg-auto"}, "auto_executed")
+
+                # (b) Natural-language reply
+                with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_reply):
+                    mock_gmail.send_message.reset_mock()
+                    tc_b, rep_b = parse_deterministic_intent("reply to the mail about what to prepare for the class saying I will bring my laptop", {})
+                    assert len(tc_b) == 1
+                    assert tc_b[0]["name"] == "draft_compose"
+                    assert "automatically sent reply" in rep_b.lower()
+                    mock_gmail.send_message.assert_called_with(
+                        to="Karishma Sivakumar <karis@example.com>",
+                        subject="Re: reg online class",
+                        body="I will bring my laptop",
+                        thread_id="thread-class-123",
+                        reply_to_message_id="msg-class-prep-1"
+                    )
+
+                # (c) Forward
+                with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_fwd):
+                    mock_gmail.send_message.reset_mock()
+                    tc_c, rep_c = parse_deterministic_intent("forward the email from Sarah to bob@example.com", {})
+                    assert len(tc_c) == 1
+                    assert tc_c[0]["name"] == "draft_compose"
+                    assert "automatically sent forwarded email" in rep_c.lower()
+                    mock_gmail.send_message.assert_called_with(
+                        to="bob@example.com",
+                        subject="Fwd: Project Update",
+                        body="---------- Forwarded message ---------\nFrom: Sarah <sarah@company.com>\nSubject: Project Update\n\nHere is the project update.",
+                        thread_id="thread-sarah-123",
+                        reply_to_message_id=None
+                    )
+
+    # --- Mode B: Confirm Send Mode (Default) ---
+    # With Send Mode = confirm, all three stop at prepare_send requiring explicit human confirmation
+    with patch("routers.emails.get_user_settings", return_value={"send_mode": "confirm"}):
+        # (a) Direct compose
+        tc_a2, rep_a2 = parse_deterministic_intent("Send an email to user@test.com with subject 'Meeting' and body 'hello'", {})
+        assert len(tc_a2) == 2
+        assert tc_a2[0]["name"] == "draft_compose"
+        assert tc_a2[1]["name"] == "prepare_send"
+        assert "confirmation" in rep_a2.lower()
+
+        # (b) Natural-language reply
+        with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_reply):
+            tc_b2, rep_b2 = parse_deterministic_intent("reply to the mail about what to prepare for the class saying I will bring my laptop", {})
+            assert len(tc_b2) == 2
+            assert tc_b2[0]["name"] == "draft_compose"
+            assert tc_b2[1]["name"] == "prepare_send"
+            assert tc_b2[1]["arguments"]["reply_to_id"] == "msg-class-prep-1"
+            assert "confirmation" in rep_b2.lower()
+
+        # (c) Forward
+        with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_fwd):
+            tc_c2, rep_c2 = parse_deterministic_intent("forward the email from Sarah to bob@example.com", {})
+            assert len(tc_c2) == 2
+            assert tc_c2[0]["name"] == "draft_compose"
+            assert tc_c2[1]["name"] == "prepare_send"
+            assert tc_c2[1]["arguments"]["to"] == "bob@example.com"
+            assert "confirmation" in rep_c2.lower()
+
