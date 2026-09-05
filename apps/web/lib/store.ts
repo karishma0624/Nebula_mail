@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ViewType, Email, FilterCriteria, ComposeDraft } from './types';
+import { ViewType, Email, FilterCriteria, ComposeDraft, EmailCategory, CategoryStats } from './types';
 
 interface MailState {
   isAuthenticated: boolean;
@@ -24,10 +24,21 @@ interface MailState {
   unreadMessages: number;
   sentTotal: number;
 
+  // Gmail Category State
+  activeCategory: EmailCategory;
+  categoryStats: CategoryStats;
+
   // Search Mode State
   isSearchActive: boolean;
   searchQueryDescription: string | null;
   searchResultEstimate: number | null;
+
+  // Citation & Form State
+  highlightedEmailId: string | null;
+  isFormModalOpen: boolean;
+  formModalEmail: Email | null;
+  activeConversationId: string | null;
+  isCopilotDrawerOpen: boolean;
 
   // Actions
   setAuthenticated: (status: boolean, email?: string) => void;
@@ -46,9 +57,18 @@ interface MailState {
   setLoadingEmails: (loading: boolean) => void;
   applyLocalFilters: () => void;
 
-  // Pagination & Search Actions
+  setHighlightedEmailId: (id: string | null) => void;
+  openFormModal: (email: Email) => void;
+  closeFormModal: () => void;
+  setActiveConversationId: (id: string | null) => void;
+  toggleCopilotDrawer: () => void;
+  setCopilotDrawerOpen: (open: boolean) => void;
+
+  // Pagination, Category & Search Actions
+  setActiveCategory: (cat: EmailCategory) => void;
+  setCategoryStats: (stats: CategoryStats) => void;
   setPaginationData: (page: number, nextToken: string | null, total?: number, unread?: number) => void;
-  setMailboxStats: (stats: { total?: number; unread?: number; sentTotal?: number }) => void;
+  setMailboxStats: (stats: { total?: number; unread?: number; sentTotal?: number; categories?: CategoryStats }) => void;
   setSearchResults: (emails: Email[], queryDesc: string, estimate?: number, nextToken?: string | null) => void;
   clearSearch: () => void;
 }
@@ -81,21 +101,54 @@ export const useMailStore = create<MailState>((set, get) => ({
   unreadMessages: 0,
   sentTotal: 0,
 
+  activeCategory: 'primary',
+  categoryStats: {
+    primary: { total: 0, unread: 0 },
+    promotions: { total: 0, unread: 0 },
+    social: { total: 0, unread: 0 },
+    updates: { total: 0, unread: 0 },
+  },
+
   isSearchActive: false,
   searchQueryDescription: null,
   searchResultEstimate: null,
+
+  highlightedEmailId: null,
+  isFormModalOpen: false,
+  formModalEmail: null,
+  activeConversationId: null,
+  isCopilotDrawerOpen: false,
 
   setAuthenticated: (status, email) => set({ 
     isAuthenticated: status, 
     userEmail: email || null 
   }),
 
+  setHighlightedEmailId: (id) => set({ highlightedEmailId: id }),
+  openFormModal: (email) => set({ isFormModalOpen: true, formModalEmail: email }),
+  closeFormModal: () => set({ isFormModalOpen: false, formModalEmail: null }),
+  setActiveConversationId: (id) => set({ activeConversationId: id }),
+  toggleCopilotDrawer: () => set((s) => ({ isCopilotDrawerOpen: !s.isCopilotDrawerOpen })),
+  setCopilotDrawerOpen: (open) => set({ isCopilotDrawerOpen: open }),
+
+  setActiveCategory: (cat) => {
+    set({
+      activeCategory: cat,
+      currentPage: 1,
+      nextPageToken: null,
+      pageTokenHistory: [null],
+    });
+  },
+
+  setCategoryStats: (stats) => set({ categoryStats: stats }),
+
   setView: (view) => {
     const current = get().currentView;
     if (view !== 'detail' && view !== current) {
-      // Reset pagination when switching primary view folders
+      // Reset pagination and active filters when switching primary view folders (Inbox <-> Sent)
       set({ 
         currentView: view,
+        activeFilters: {},
         currentPage: 1,
         nextPageToken: null,
         pageTokenHistory: [null],
@@ -111,7 +164,7 @@ export const useMailStore = create<MailState>((set, get) => ({
 
   setOpenEmail: (email) => set({ 
     openEmail: email,
-    currentView: email ? 'detail' : 'inbox'
+    currentView: email ? 'detail' : 'inbox' 
   }),
 
   setEmails: (emails) => {
@@ -122,17 +175,23 @@ export const useMailStore = create<MailState>((set, get) => ({
   setFilters: (filters) => {
     set((state) => ({
       activeFilters: { ...state.activeFilters, ...filters },
-      ...(filters.unread_only !== undefined ? {
-        currentPage: 1,
-        nextPageToken: null,
-        pageTokenHistory: [null]
-      } : {})
+      currentPage: 1,
+      nextPageToken: null,
+      pageTokenHistory: [null]
     }));
     get().applyLocalFilters();
   },
 
   resetFilters: () => {
-    set({ activeFilters: {} });
+    set({ 
+      activeFilters: {},
+      isSearchActive: false,
+      searchQueryDescription: null,
+      searchResultEstimate: null,
+      currentPage: 1,
+      nextPageToken: null,
+      pageTokenHistory: [null]
+    });
     get().applyLocalFilters();
   },
 
@@ -145,7 +204,10 @@ export const useMailStore = create<MailState>((set, get) => ({
   setIsTypingCompose: (isTyping) => set({ isTypingCompose: isTyping }),
 
   openConfirmModal: (draft) => set({
-    draftToSend: draft,
+    draftToSend: {
+      ...draft,
+      draft_id: draft.draft_id || ('draft-' + Date.now())
+    },
     isConfirmModalOpen: true
   }),
 
@@ -174,16 +236,15 @@ export const useMailStore = create<MailState>((set, get) => ({
         nextPageToken: nextToken,
         pageTokenHistory: history,
         ...(total !== undefined ? { totalMessages: total } : {}),
-        ...(unread !== undefined ? { unreadMessages: unread } : {})
       };
     });
   },
 
   setMailboxStats: (stats) => {
     set((state) => ({
-      ...(stats.total !== undefined ? { totalMessages: stats.total } : {}),
       ...(stats.unread !== undefined ? { unreadMessages: stats.unread } : {}),
-      ...(stats.sentTotal !== undefined ? { sentTotal: stats.sentTotal } : {})
+      ...(stats.sentTotal !== undefined ? { sentTotal: stats.sentTotal } : {}),
+      ...(stats.categories ? { categoryStats: stats.categories } : {}),
     }));
   },
 

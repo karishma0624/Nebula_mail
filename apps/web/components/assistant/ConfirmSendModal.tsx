@@ -22,11 +22,13 @@ export const ConfirmSendModal: React.FC = () => {
     setIsSending(true);
     setErrorMsg(null);
     try {
+      console.log(`[ConfirmSendModal] Firing /emails/send with draft_id=${draftToSend.draft_id}, to=${draftToSend.to}, subject=${draftToSend.subject}`);
       const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          draft_id: draftToSend.draft_id,
           to: draftToSend.to,
           subject: draftToSend.subject,
           body: draftToSend.body,
@@ -50,6 +52,23 @@ export const ConfirmSendModal: React.FC = () => {
     }
   };
 
+  const handleCancel = () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+      fetch(`${apiUrl}/emails/reject-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draft_id: draftToSend?.draft_id,
+          to: draftToSend?.to,
+          subject: draftToSend?.subject,
+          body: draftToSend?.body,
+        }),
+      }).catch(() => {});
+    } catch {}
+    closeConfirmModal();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="max-w-lg w-full glass-panel border border-slate-700/80 rounded-3xl p-6 shadow-2xl shadow-indigo-950/80 space-y-4">
@@ -65,7 +84,7 @@ export const ConfirmSendModal: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={closeConfirmModal}
+            onClick={handleCancel}
             className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition"
           >
             <X size={16} />
@@ -126,7 +145,7 @@ export const ConfirmSendModal: React.FC = () => {
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
             type="button"
-            onClick={closeConfirmModal}
+            onClick={handleCancel}
             disabled={isSending}
             className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
           >
@@ -146,7 +165,7 @@ export const ConfirmSendModal: React.FC = () => {
             ) : (
               <>
                 <Send size={13} />
-                <span>Authorize & Send</span>
+                <span>Confirm & Send</span>
               </>
             )}
           </button>

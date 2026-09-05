@@ -20,6 +20,7 @@ class OpenEmailInput(BaseModel):
     email_id: str = Field(..., description="The unique message ID of the email to view in detail")
 
 class DraftComposeInput(BaseModel):
+    draft_id: Optional[str] = Field(None, description="Unique ID of draft")
     to: Optional[str] = Field(None, description="Recipient email address")
     subject: Optional[str] = Field(None, description="Subject line for the message")
     body: Optional[str] = Field(None, description="Body content of the draft email")
@@ -27,6 +28,10 @@ class DraftComposeInput(BaseModel):
 
 class PrepareSendInput(BaseModel):
     draft_id: Optional[str] = Field(None, description="ID of draft or pending message to send")
+    to: Optional[str] = Field(None, description="Recipient email address")
+    subject: Optional[str] = Field(None, description="Subject line for the message")
+    body: Optional[str] = Field(None, description="Body content of the draft email")
+    thread_id: Optional[str] = Field(None, description="Thread ID if replying to existing thread")
 
 class ApplyFiltersInput(BaseModel):
     criteria: Dict[str, Any] = Field(..., description="Filter criteria object containing sender, keyword, date_from, date_to, unread_only")
@@ -74,12 +79,11 @@ def search_emails(args: SearchEmailsInput) -> Dict[str, Any]:
         import datetime
         try:
             dt = datetime.datetime.strptime(args.date_to, "%Y-%m-%d").date()
-            today = datetime.datetime.now().astimezone().date()
-            if dt < today:
-                next_day = (dt + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-                query_parts.append(f"before:{next_day}")
+            # Gmail before: is exclusive, so add 1 day to make date_to inclusive
+            next_day = (dt + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+            query_parts.append(f"before:{next_day}")
         except Exception:
-            pass
+            query_parts.append(f"before:{args.date_to}")
     if args.unread_only:
         query_parts.append("is:unread")
 
@@ -146,7 +150,10 @@ def open_email(args: OpenEmailInput) -> Dict[str, Any]:
 
 def draft_compose(args: DraftComposeInput) -> Dict[str, Any]:
     """Fill compose form and switch UI view. Never directly sends."""
+    import uuid
+    draft_id = args.draft_id or f"draft-{uuid.uuid4().hex[:8]}"
     res = {
+        "draft_id": draft_id,
         "to": args.to or "",
         "subject": args.subject or "",
         "body": args.body or "",
@@ -159,10 +166,16 @@ def draft_compose(args: DraftComposeInput) -> Dict[str, Any]:
 def prepare_send(args: PrepareSendInput) -> Dict[str, Any]:
     """
     CRITICAL GUARDRAIL: Marks draft as pending approval.
-    NEVER sends directly. Returns draft info for the frontend ConfirmSendModal.
+    NEVER sends directly. Returns literal to/subject/body and fresh draft_id for frontend ConfirmSendModal.
     """
+    import uuid
+    draft_id = args.draft_id or f"draft-{uuid.uuid4().hex[:8]}"
     res = {
-        "draft_id": args.draft_id,
+        "draft_id": draft_id,
+        "to": args.to or "",
+        "subject": args.subject or "",
+        "body": args.body or "",
+        "thread_id": args.thread_id,
         "status": "pending_approval",
         "requires_human_confirmation": True
     }
@@ -187,3 +200,60 @@ def list_recent(args: ListRecentInput) -> Dict[str, Any]:
     except Exception as e:
         log_tool_audit("list_recent", args.model_dump(), {"error": str(e)}, "failed")
         return {"folder": args.folder, "count": 0, "emails": []}
+
+class FillFormInput(BaseModel):
+    email_id: str = Field(..., description="The unique message ID of the email containing the form")
+    field_values: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Proposed values for form fields")
+
+def fill_form(args: FillFormInput) -> Dict[str, Any]:
+    """
+    Extract form fields from email attachments or links and propose values.
+    Saves session to form_fill_sessions table with status 'pending_approval'.
+    CRITICAL GUARDRAIL: Never auto-submits. Requires explicit human confirmation.
+    """
+    import uuid
+    client = None
+    try:
+        client = get_current_gmail_client()
+    except Exception:
+        pass
+
+    msg = client.get_message(args.email_id) if client else None
+    form_type = msg.get("form_type", "google_form") if msg else "google_form"
+    form_url = msg.get("form_url", "") if msg else ""
+
+    fields = [
+        {"name": "full_name", "label": "Full Name", "value": args.field_values.get("full_name", ""), "type": "text"},
+        {"name": "email", "label": "Email Address", "value": args.field_values.get("email", ""), "type": "email"},
+        {"name": "comments", "label": "Feedback / Comments", "value": args.field_values.get("comments", ""), "type": "text"}
+    ]
+
+    session_id = str(uuid.uuid4())
+    supabase = get_supabase()
+    if supabase:
+        try:
+            from db.supabase_client import get_current_user_id
+            uid = get_current_user_id()
+            if uid:
+                supabase.table("form_fill_sessions").insert({
+                    "id": session_id,
+                    "user_id": uid,
+                    "email_id": args.email_id,
+                    "form_type": form_type if form_type in ['pdf', 'google_form', 'ms_form', 'other'] else 'other',
+                    "fields": fields,
+                    "status": "pending_approval"
+                }).execute()
+        except Exception as e:
+            print(f"Notice: could not log form_fill_session: {e}")
+
+    res = {
+        "session_id": session_id,
+        "email_id": args.email_id,
+        "form_type": form_type,
+        "form_url": form_url,
+        "fields": fields,
+        "status": "pending_approval",
+        "requires_human_confirmation": True
+    }
+    log_tool_audit("fill_form", args.model_dump(), res, "pending_approval")
+    return res

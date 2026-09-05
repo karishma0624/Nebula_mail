@@ -9,6 +9,7 @@ import { FilterBar } from '../components/mail/FilterBar';
 import { EmailList } from '../components/mail/EmailList';
 import { EmailDetail } from '../components/mail/EmailDetail';
 import { ComposeForm } from '../components/mail/ComposeForm';
+import { FormFillModal } from '../components/mail/FormFillModal';
 import { AssistantPanel } from '../components/assistant/AssistantPanel';
 import { ConfirmSendModal } from '../components/assistant/ConfirmSendModal';
 
@@ -57,7 +58,8 @@ export default function MailApp() {
         setMailboxStats({
           total: data.inbox?.total,
           unread: data.inbox?.unread,
-          sentTotal: data.sent?.total
+          sentTotal: data.sent?.total,
+          categories: data.categories
         });
       }
     } catch (e) {
@@ -65,7 +67,8 @@ export default function MailApp() {
     }
   }, [isAuthenticated, setMailboxStats]);
 
-  const unreadOnly = useMailStore((state) => state.activeFilters.unread_only);
+  const activeFilters = useMailStore((state) => state.activeFilters);
+  const activeCategory = useMailStore((state) => state.activeCategory);
 
   // Fetch real emails from Gmail backend with native page tokens
   const fetchEmails = useCallback(async (pageToken: string | null = null, pageNumber: number = 1) => {
@@ -74,13 +77,58 @@ export default function MailApp() {
     try {
       const folder = currentView === 'sent' ? 'sent' : 'inbox';
       let url = `${AGENT_API_URL}/emails/list?folder=${folder}&limit=25`;
-      const isUnread = useMailStore.getState().activeFilters.unread_only;
-      if (isUnread) {
+      
+      const { activeFilters: currentFilters, isSearchActive, activeCategory: currentCat } = useMailStore.getState();
+      const queryParts: string[] = [];
+
+      if (currentFilters.sender) {
+        queryParts.push(`from:${currentFilters.sender}`);
+      }
+      if (currentFilters.keyword) {
+        queryParts.push(currentFilters.keyword);
+      }
+      if (currentFilters.date_from) {
+        queryParts.push(`after:${currentFilters.date_from}`);
+      }
+      if (currentFilters.date_to) {
+        try {
+          const parts = currentFilters.date_to.split('-').map(Number);
+          if (parts.length === 3) {
+            const nextDate = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+            const y = nextDate.getFullYear();
+            const m = String(nextDate.getMonth() + 1).padStart(2, '0');
+            const d = String(nextDate.getDate()).padStart(2, '0');
+            queryParts.push(`before:${y}-${m}-${d}`);
+          } else {
+            queryParts.push(`before:${currentFilters.date_to}`);
+          }
+        } catch {
+          queryParts.push(`before:${currentFilters.date_to}`);
+        }
+      }
+
+      const combinedQ = queryParts.join(' ').trim();
+      const hasSearch = Boolean(combinedQ);
+
+      if (hasSearch) {
+        url += `&q=${encodeURIComponent(combinedQ)}`;
+      }
+
+      if (currentFilters.unread_only) {
         url += `&unread_only=true`;
       }
+
+      // STRICT ISOLATION: category MUST ONLY be passed when folder is inbox AND there is NO search/filters
+      if (folder === 'inbox' && !hasSearch && !isSearchActive) {
+        if (currentCat) {
+          url += `&category=${encodeURIComponent(currentCat)}`;
+        }
+      }
+
       if (pageToken) {
         url += `&page_token=${encodeURIComponent(pageToken)}`;
       }
+
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -119,19 +167,31 @@ export default function MailApp() {
     fetchEmails(null, 1);
   }, [clearSearch, fetchEmails]);
 
+  const handleCategoryChange = useCallback(() => {
+    fetchEmails(null, 1);
+  }, [fetchEmails]);
+
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
+  // Initial load only: fetch emails and mailbox stats
   useEffect(() => {
     if (isAuthenticated) {
       fetchEmails(null, 1);
       fetchMailboxStats();
     }
-  }, [isAuthenticated, currentView, unreadOnly, fetchEmails, fetchMailboxStats]);
+  }, [isAuthenticated, checkAuthStatus]);
+
+  // View / Category / Filter change: fetch emails and reset to page 1
+  // Notice: fetchMailboxStats is NOT called on category switch!
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchEmails(null, 1);
+    }
+  }, [isAuthenticated, currentView, activeCategory, activeFilters, fetchEmails]);
 
   // Fallback 15-second polling sync
-  // When active search is running, polling ONLY updates mailbox statistics and NEVER overwrites search results!
   useEffect(() => {
     if (!isAuthenticated) return;
     const interval = setInterval(() => {
@@ -148,7 +208,7 @@ export default function MailApp() {
   }, [isAuthenticated, fetchEmails, fetchMailboxStats]);
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-nebula-950 font-sans">
+    <main className="flex h-screen w-screen overflow-hidden bg-white dark:bg-slate-950 font-sans transition-colors">
       {/* 1. Left Sidebar Navigation */}
       <Sidebar />
 
@@ -185,6 +245,8 @@ export default function MailApp() {
                   onNextPage={handleNextPage}
                   onPrevPage={handlePrevPage}
                   onClearSearch={handleClearSearch}
+                  onCategoryChange={handleCategoryChange}
+                  onRefresh={() => fetchEmails(null, 1)}
                 />
               )}
             </div>
@@ -197,6 +259,10 @@ export default function MailApp() {
 
       {/* 4. Human-in-the-Loop Send Approval Modal */}
       <ConfirmSendModal />
+
+      {/* 5. Human-in-the-Loop Form Fill Approval Modal */}
+      <FormFillModal />
     </main>
   );
 }
+

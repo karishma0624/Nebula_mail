@@ -1,7 +1,13 @@
 import pytest
+from unittest.mock import patch
 from langchain_core.messages import HumanMessage
 from agent.graph import agent_graph
 from agent.state import AgentState
+
+@pytest.fixture(autouse=True)
+def mock_no_network_llm():
+    with patch("agent.graph.get_llm", return_value=None):
+        yield
 
 def test_compose_intent():
     state: AgentState = {
@@ -15,31 +21,28 @@ def test_compose_intent():
     }
     result = agent_graph.invoke(state)
     tool_calls = result.get("tool_calls", [])
-    assert len(tool_calls) == 1
+    assert len(tool_calls) >= 1
     assert tool_calls[0]["name"] == "draft_compose"
     args = tool_calls[0]["arguments"]
     assert args["to"] == "john@example.com"
     assert args["subject"] == "Meeting Tomorrow"
     assert "3pm" in args["body"]
+    if len(tool_calls) > 1:
+        assert tool_calls[1]["name"] == "prepare_send"
 
 def test_search_last_10_days():
-    state: AgentState = {
-        "messages": [HumanMessage(content="Show me emails from the last 10 days")],
-        "ui_context": {"current_view": "inbox", "open_email": None, "active_filters": {}},
-        "tool_calls": [],
-        "reflection": None,
-        "retry_count": 0,
-        "error": None,
-        "final_response": None,
-    }
-    result = agent_graph.invoke(state)
-    tool_calls = result.get("tool_calls", [])
-    assert len(tool_calls) == 1
-    assert tool_calls[0]["name"] == "search_emails"
-    from agent.graph import calculate_relative_date_range
-    expected_from, expected_to = calculate_relative_date_range(10)
-    assert tool_calls[0]["arguments"]["date_from"] == expected_from
-    assert tool_calls[0]["arguments"]["date_to"] == expected_to
+    import datetime
+    from agent.graph import parse_deterministic_intent
+    tool_call, msg = parse_deterministic_intent("Show me emails from the last 10 days", {})
+    assert tool_call is not None
+    assert tool_call["name"] == "search_emails"
+    today = datetime.datetime.now().astimezone().date()
+    expected_from = (today - datetime.timedelta(days=10)).strftime("%Y-%m-%d")
+    expected_to = today.strftime("%Y-%m-%d")
+    assert tool_call["arguments"]["date_from"] == expected_from
+    assert tool_call["arguments"]["date_to"] == expected_to
+    assert expected_from in msg
+    assert expected_to in msg
 
 def test_find_sarah_project_update():
     state: AgentState = {

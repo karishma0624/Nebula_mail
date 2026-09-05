@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Search, RefreshCw, Sparkles, Filter, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, RefreshCw, Sparkles, Filter, CheckCircle2, AlertCircle, Sun, Moon } from 'lucide-react';
 import { useMailStore } from '../../lib/store';
 
 interface TopBarProps {
@@ -10,6 +10,19 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  useEffect(() => {
+    const active = document.documentElement.getAttribute('data-theme') as 'light' | 'dark';
+    if (active) setTheme(active);
+  }, []);
+
+  const handleToggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    localStorage.setItem('theme', nextTheme);
+    setTheme(nextTheme);
+  };
   const { 
     currentView, 
     isAuthenticated,
@@ -75,21 +88,21 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
   };
 
   return (
-    <header className="h-16 border-b border-slate-800 bg-nebula-900/80 backdrop-blur-md px-6 flex items-center justify-between gap-4 select-none">
+    <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 backdrop-blur-md px-6 flex items-center justify-between gap-4 select-none transition-colors">
       <div className="flex items-center gap-4 min-w-[200px]">
-        <h2 className="text-lg font-semibold text-slate-100 tracking-tight">{getTitle()}</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 tracking-tight">{getTitle()}</h2>
         
         {/* Auth status pill */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800/80 border border-slate-700/60">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60">
           {isAuthenticated ? (
             <>
-              <CheckCircle2 size={12} className="text-emerald-400" />
-              <span className="text-slate-300">Live Gmail</span>
+              <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400" />
+              <span className="text-slate-700 dark:text-slate-300 font-medium">Live Gmail</span>
             </>
           ) : (
             <>
-              <AlertCircle size={12} className="text-amber-400" />
-              <span className="text-amber-300">Auth Required</span>
+              <AlertCircle size={12} className="text-amber-500 dark:text-amber-400" />
+              <span className="text-amber-700 dark:text-amber-300">Auth Required</span>
             </>
           )}
         </div>
@@ -103,14 +116,14 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
             type="text"
             value={keywordInput}
             onChange={(e) => setKeywordInput(e.target.value)}
-            placeholder="Search all Gmail by keyword, subject, or from:sender..."
-            className="w-full bg-slate-800/60 border border-slate-700/80 rounded-xl pl-10 pr-12 py-2 text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition duration-150"
+            placeholder="Search mail by keyword, subject, or sender..."
+            className="w-full bg-[#edf2fa] dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 rounded-full pl-10 pr-12 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-blue-500/40 transition duration-150"
           />
           {(keywordInput || isSearchActive) && (
             <button
               type="button"
               onClick={handleClear}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/60 hover:bg-slate-700 px-2 py-0.5 rounded-md transition"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-2 py-0.5 rounded-full transition"
             >
               Clear
             </button>
@@ -119,27 +132,41 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
       </form>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2">
+        {/* Sun/Moon Theme Toggle */}
+        <button
+          onClick={handleToggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 transition"
+        >
+          {theme === 'dark' ? (
+            <Sun size={17} className="text-amber-400 hover:rotate-45 transition-transform duration-200" />
+          ) : (
+            <Moon size={17} className="text-indigo-600 hover:-rotate-12 transition-transform duration-200" />
+          )}
+        </button>
+
         {onRefresh && (
           <button
             onClick={onRefresh}
             disabled={isLoadingEmails || !isAuthenticated}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent hover:border-slate-700 transition disabled:opacity-40"
+            className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 transition disabled:opacity-40"
             title="Refresh inbox"
           >
-            <RefreshCw size={17} className={isLoadingEmails ? 'animate-spin text-indigo-400' : ''} />
+            <RefreshCw size={17} className={isLoadingEmails ? 'animate-spin text-blue-600 dark:text-indigo-400' : ''} />
           </button>
         )}
 
         <button
           onClick={toggleAssistant}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition shadow-sm ${
             isAssistantOpen
-              ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/40 shadow-sm shadow-indigo-500/20'
-              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+              ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-indigo-600/20 dark:text-indigo-300 dark:border-indigo-500/40'
+              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80'
           }`}
         >
-          <Sparkles size={14} className="text-cyan-400" />
+          <Sparkles size={14} className="text-blue-600 dark:text-cyan-400" />
           <span>Copilot</span>
         </button>
       </div>

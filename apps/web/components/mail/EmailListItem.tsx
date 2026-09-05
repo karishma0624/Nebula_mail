@@ -1,18 +1,78 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Email } from '../../lib/types';
 import { useMailStore } from '../../lib/store';
-import { Mail, Clock } from 'lucide-react';
+import { Star } from 'lucide-react';
 
 interface EmailListItemProps {
   email: Email;
+  isSelectedItem?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-export const EmailListItem: React.FC<EmailListItemProps> = ({ email }) => {
-  const { setOpenEmail, openEmail } = useMailStore();
+// Search keyword highlight component (matches Gmail yellow highlight)
+const HighlightText: React.FC<{ text: string; terms: string[] }> = ({ text, terms }) => {
+  if (!text || !terms || terms.length === 0) return <>{text}</>;
+  const validTerms = Array.from(new Set(
+    terms
+      .map(t => t.trim().replace(/^from:/i, '').replace(/^to:/i, '').replace(/^subject:/i, ''))
+      .filter(t => t.length >= 2)
+  )).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
-  const isSelected = openEmail?.id === email.id;
+  if (validTerms.length === 0) return <>{text}</>;
+  const regex = new RegExp(`(${validTerms.join('|')})`, 'gi');
+  const parts = text.split(regex);
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark
+            key={i}
+            className="bg-[#ffdf70] dark:bg-amber-400/35 text-slate-900 dark:text-amber-100 rounded-[2px] px-0.5 font-medium transition-colors"
+          >
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
+
+export const EmailListItem: React.FC<EmailListItemProps> = ({ 
+  email, 
+  isSelectedItem = false,
+  onToggleSelect 
+}) => {
+  const { 
+    setOpenEmail, 
+    openEmail, 
+    highlightedEmailId,
+    activeFilters,
+    searchQueryDescription,
+    isSearchActive
+  } = useMailStore();
+  const [isStarred, setIsStarred] = useState(email.label_ids?.includes('STARRED') || false);
+
+  const isCurrentOpen = openEmail?.id === email.id;
+  const isHighlighted = highlightedEmailId === email.id;
+
+  // Extract active search & filter keywords to highlight in the list
+  const highlightTerms: string[] = [];
+  if (activeFilters.sender) highlightTerms.push(activeFilters.sender);
+  if (activeFilters.keyword) highlightTerms.push(activeFilters.keyword);
+  if (isSearchActive && searchQueryDescription) {
+    const rawTokens = searchQueryDescription.split(/\s+/);
+    rawTokens.forEach(token => {
+      const clean = token.replace(/^(from|to|subject|label|after|before):/i, '').trim();
+      if (clean && !clean.includes(':')) {
+        highlightTerms.push(clean);
+      }
+    });
+  }
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '';
@@ -26,58 +86,110 @@ export const EmailListItem: React.FC<EmailListItemProps> = ({ email }) => {
   };
 
   const getSenderName = (rawSender: string) => {
-    // E.g. "Sarah Jenkins <sarah@example.com>" -> "Sarah Jenkins"
     const match = rawSender.match(/^([^<]+)/);
     return match ? match[1].trim().replace(/"/g, '') : rawSender;
   };
 
   const senderName = getSenderName(email.sender);
-  const initial = senderName ? senderName.charAt(0).toUpperCase() : '?';
 
   return (
     <div
       onClick={() => setOpenEmail(email)}
-      className={`group px-6 py-4 border-b border-slate-800/80 cursor-pointer transition duration-150 flex items-start gap-4 ${
-        isSelected
-          ? 'bg-indigo-950/40 border-indigo-500/40'
+      className={`group flex items-center gap-3 px-4 py-2.5 border-b border-slate-200/80 dark:border-slate-800/60 cursor-pointer transition-colors duration-150 select-none text-sm ${
+        isHighlighted
+          ? 'highlight-citation ring-2 ring-blue-500 dark:ring-indigo-400 bg-blue-50/80 dark:bg-indigo-950/60'
+          : isCurrentOpen
+          ? 'bg-blue-100/70 dark:bg-indigo-950/60 border-l-[3px] border-l-blue-600 dark:border-l-indigo-500'
           : email.is_unread
-          ? 'bg-slate-900/90 hover:bg-slate-800/60'
-          : 'bg-nebula-950/60 hover:bg-slate-900/50'
+          ? 'bg-white dark:bg-slate-900/90 hover:bg-[#e8eef6] dark:hover:bg-slate-800/80 border-l-[3px] border-l-blue-600 dark:border-l-indigo-400 shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.04)]'
+          : 'bg-[#f2f6fc]/70 dark:bg-slate-950/40 hover:bg-[#e8eef6] dark:hover:bg-slate-900/60 border-l-[3px] border-l-transparent'
       }`}
     >
-      {/* Unread indicator dot */}
-      <div className="pt-2">
-        <span
-          className={`block w-2.5 h-2.5 rounded-full ${
-            email.is_unread ? 'bg-indigo-500 shadow-sm shadow-indigo-500/50' : 'bg-transparent'
-          }`}
+      {/* Selection Checkbox */}
+      <div 
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSelect?.(email.id);
+        }}
+        className="flex items-center justify-center shrink-0"
+      >
+        <input
+          type="checkbox"
+          checked={isSelectedItem}
+          onChange={() => {}}
+          className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer transition"
         />
       </div>
 
-      {/* Avatar */}
-      <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700/80 flex items-center justify-center text-sm font-semibold text-indigo-300 shrink-0 shadow-inner">
-        {initial}
+      {/* Star Icon Button */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsStarred(!isStarred);
+        }}
+        className="p-0.5 rounded text-slate-400 dark:text-slate-500 hover:text-amber-400 transition shrink-0"
+        title={isStarred ? "Starred" : "Not starred"}
+      >
+        <Star
+          size={16}
+          className={isStarred ? "text-amber-400 fill-amber-400" : "text-slate-300 dark:text-slate-600 group-hover:text-slate-500 dark:group-hover:text-slate-400 transition-colors"}
+        />
+      </button>
+
+      {/* Unread dot indicator */}
+      <div className="w-1.5 shrink-0 flex items-center justify-center">
+        {email.is_unread && (
+          <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-indigo-400 shadow-sm shadow-blue-500/50" />
+        )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <span className={`text-sm truncate ${email.is_unread ? 'font-bold text-white' : 'font-medium text-slate-300'}`}>
-            {senderName}
-          </span>
-          <span className="text-xs text-slate-500 flex items-center gap-1 shrink-0">
-            <Clock size={11} />
-            {formatDate(email.date || email.received_at)}
-          </span>
-        </div>
+      {/* Sender Column */}
+      <div className="w-44 md:w-52 shrink-0 truncate pr-2">
+        <span
+          className={`truncate block ${
+            email.is_unread
+              ? 'font-bold text-slate-900 dark:text-white tracking-tight'
+              : 'font-normal text-slate-700 dark:text-slate-300'
+          }`}
+        >
+          <HighlightText text={senderName} terms={highlightTerms} />
+        </span>
+      </div>
 
-        <h4 className={`text-xs truncate mb-1 ${email.is_unread ? 'font-semibold text-slate-200' : 'text-slate-400'}`}>
-          {email.subject || '(No Subject)'}
-        </h4>
+      {/* Subject & Snippet (Single Line Gmail Density) */}
+      <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
+        {(email.has_form || email.form_url) && (
+          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+            Form
+          </span>
+        )}
+        <span
+          className={`truncate shrink-0 max-w-[55%] ${
+            email.is_unread
+              ? 'font-bold text-slate-900 dark:text-slate-100'
+              : 'font-normal text-slate-700 dark:text-slate-300'
+          }`}
+        >
+          <HighlightText text={email.subject || '(No Subject)'} terms={highlightTerms} />
+        </span>
+        <span className="text-slate-400 dark:text-slate-600 shrink-0 select-none">-</span>
+        <span className="text-slate-500 dark:text-slate-400 text-xs truncate flex-1">
+          <HighlightText text={email.snippet || ''} terms={highlightTerms} />
+        </span>
+      </div>
 
-        <p className="text-xs text-slate-500 truncate leading-relaxed">
-          {email.snippet}
-        </p>
+      {/* Timestamp on Far Right */}
+      <div className="w-20 text-right shrink-0">
+        <span
+          className={`text-xs whitespace-nowrap ${
+            email.is_unread
+              ? 'font-bold text-slate-900 dark:text-slate-200'
+              : 'font-normal text-slate-500 dark:text-slate-500'
+          }`}
+        >
+          {formatDate(email.date || email.received_at)}
+        </span>
       </div>
     </div>
   );

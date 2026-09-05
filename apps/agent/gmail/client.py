@@ -1,10 +1,15 @@
 import base64
+import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Dict, Any, Optional
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
+
+# In-memory caches to prevent rate-limit 403 errors during rapid tab switching
+_label_cache: Dict[str, tuple[float, Dict[str, int]]] = {}
+_message_cache: Dict[str, Dict[str, Any]] = {}
 
 class GmailClient:
     def __init__(self, credentials: Optional[Credentials] = None):
@@ -16,9 +21,10 @@ class GmailClient:
         folder: str = "inbox", 
         query: str = "", 
         max_results: int = 25,
-        page_token: Optional[str] = None
+        page_token: Optional[str] = None,
+        category: Optional[str] = None
     ) -> Dict[str, Any]:
-        """List messages from Gmail, filtering by folder and search query with native page-token pagination."""
+        """List messages from Gmail, filtering by folder, category, and search query with native page-token pagination."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
 
@@ -30,6 +36,17 @@ class GmailClient:
             q_parts.append("in:sent")
         elif folder == "draft":
             q_parts.append("in:draft")
+
+        if category and folder == "inbox":
+            cat_norm = category.strip().lower()
+            if cat_norm in ["primary", "personal"]:
+                q_parts.append("category:primary")
+            elif cat_norm in ["promotions", "promotion"]:
+                q_parts.append("category:promotions")
+            elif cat_norm in ["social"]:
+                q_parts.append("category:social")
+            elif cat_norm in ["updates", "update"]:
+                q_parts.append("category:updates")
 
         if query:
             q_parts.append(query)
@@ -70,26 +87,62 @@ class GmailClient:
             raise error
 
     def get_label_stats(self, label_id: str = "INBOX") -> Dict[str, int]:
-        """Get total and unread message counts for a Gmail label (e.g. INBOX, SENT)."""
+        """Get total and unread message counts for a Gmail label with 15s cache to avoid rate limits."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
 
         normalized_label = label_id.upper() if label_id.lower() in ["inbox", "sent", "draft", "trash", "spam"] else label_id
+        now = time.time()
+
+        if normalized_label in _label_cache:
+            cache_time, cached_stats = _label_cache[normalized_label]
+            if now - cache_time < 15:
+                return cached_stats
 
         try:
             label_info = self.service.users().labels().get(userId="me", id=normalized_label).execute()
-            return {
+            res = {
                 "total": int(label_info.get("messagesTotal", 0)),
                 "unread": int(label_info.get("messagesUnread", 0)),
             }
+            _label_cache[normalized_label] = (now, res)
+            return res
         except HttpError as error:
             print(f"Gmail API error in get_label_stats: {error}")
+            if normalized_label in _label_cache:
+                return _label_cache[normalized_label][1]
             return {"total": 0, "unread": 0}
 
-    def get_message(self, message_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch full details for a message by ID."""
+    def get_all_mailbox_stats(self) -> Dict[str, Any]:
+        """Get total and unread counts for inbox, sent, and all Gmail categories (Primary, Promotions, Social, Updates)."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
+
+        inbox_stats = self.get_label_stats("INBOX")
+        sent_stats = self.get_label_stats("SENT")
+        primary_stats = self.get_label_stats("CATEGORY_PERSONAL")
+        promotions_stats = self.get_label_stats("CATEGORY_PROMOTIONS")
+        social_stats = self.get_label_stats("CATEGORY_SOCIAL")
+        updates_stats = self.get_label_stats("CATEGORY_UPDATES")
+
+        return {
+            "inbox": inbox_stats,
+            "sent": sent_stats,
+            "categories": {
+                "primary": primary_stats,
+                "promotions": promotions_stats,
+                "social": social_stats,
+                "updates": updates_stats,
+            }
+        }
+
+    def get_message(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch full details for a message by ID with in-memory caching."""
+        if not self.service:
+            raise ValueError("Gmail client not initialized with valid credentials")
+
+        if message_id in _message_cache:
+            return _message_cache[message_id]
 
         try:
             msg = self.service.users().messages().get(
@@ -113,7 +166,26 @@ class GmailClient:
 
             is_unread = "UNREAD" in label_ids
 
-            return {
+            import re
+            has_form = False
+            form_url = None
+            form_type = "other"
+
+            form_pattern = r"(https?://(?:docs\.google\.com/forms/[^\s\"'>]+|forms\.gle/[^\s\"'>]+|forms\.office\.com/[^\s\"'>]+))"
+            combined_content = f"{body_text} {body_html} {msg.get('snippet', '')}"
+            match = re.search(form_pattern, combined_content, re.IGNORECASE)
+            if match:
+                has_form = True
+                form_url = match.group(1)
+                if "google" in form_url:
+                    form_type = "google_form"
+                elif "office" in form_url:
+                    form_type = "ms_form"
+            elif ".pdf" in combined_content.lower() or "form" in headers.get("subject", "").lower():
+                has_form = True
+                form_type = "pdf"
+
+            parsed_msg = {
                 "id": msg.get("id"),
                 "thread_id": msg.get("threadId"),
                 "sender": headers.get("from", "Unknown"),
@@ -126,7 +198,16 @@ class GmailClient:
                 "folder": folder,
                 "is_unread": is_unread,
                 "label_ids": label_ids,
+                "has_form": has_form,
+                "form_url": form_url,
+                "form_type": form_type,
             }
+
+            if len(_message_cache) > 500:
+                _message_cache.clear()
+            _message_cache[message_id] = parsed_msg
+
+            return parsed_msg
         except HttpError as error:
             print(f"Gmail API error in get_message: {error}")
             raise error
@@ -166,13 +247,27 @@ class GmailClient:
         return body_text, body_html
 
     def create_draft(self, to: str, subject: str, body: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
-        """Create an email draft in Gmail."""
+        """Create an email draft in Gmail with proper RFC-compliant MIME headers."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
 
-        message = MIMEText(body)
-        message["to"] = to
-        message["subject"] = subject
+        from email.mime.text import MIMEText
+        from email.utils import make_msgid, formatdate
+
+        message = MIMEText(body, "plain", "utf-8")
+        message["To"] = to
+        message["Subject"] = subject
+        message["Date"] = formatdate(localtime=True)
+        message["Message-ID"] = make_msgid()
+        message["MIME-Version"] = "1.0"
+
+        try:
+            profile = self.service.users().getProfile(userId="me").execute()
+            user_addr = profile.get("emailAddress")
+            if user_addr:
+                message["From"] = user_addr
+        except Exception:
+            pass
 
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
         draft_body: Dict[str, Any] = {"message": {"raw": raw_message}}
@@ -183,13 +278,27 @@ class GmailClient:
         return draft
 
     def send_message(self, to: str, subject: str, body: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
-        """Send an email via Gmail API."""
+        """Send an email via Gmail API with proper RFC-compliant MIME headers to reduce spam risk."""
         if not self.service:
             raise ValueError("Gmail client not initialized with valid credentials")
 
-        message = MIMEText(body)
-        message["to"] = to
-        message["subject"] = subject
+        from email.mime.text import MIMEText
+        from email.utils import make_msgid, formatdate
+
+        message = MIMEText(body, "plain", "utf-8")
+        message["To"] = to
+        message["Subject"] = subject
+        message["Date"] = formatdate(localtime=True)
+        message["Message-ID"] = make_msgid()
+        message["MIME-Version"] = "1.0"
+
+        try:
+            profile = self.service.users().getProfile(userId="me").execute()
+            user_addr = profile.get("emailAddress")
+            if user_addr:
+                message["From"] = user_addr
+        except Exception:
+            pass
 
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
         send_body: Dict[str, Any] = {"raw": raw_message}

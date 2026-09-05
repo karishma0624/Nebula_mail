@@ -29,9 +29,23 @@ RULES:
    pretending to do it.
 
 AVAILABLE TOOLS:
-- search_emails(sender?, keyword?, date_from?, date_to?, unread_only?, folder?)
-- open_email(email_id)
-- draft_compose(to?, subject?, body?, reply_to_id?)
-- prepare_send(draft_id)
-- apply_filters(criteria)
-- list_recent(folder, limit)"""
+- search_emails(sender?, keyword?, date_from?, date_to?, unread_only?, folder?):
+  Use whenever the user wants to find, filter, search, or view emails.
+  Generalize to all natural-language and casual phrasings, including:
+  * Casual sender queries: "mails from supabase", "emails from AWS", "any emails from Stripe", "stuff from Sarah", "filter by David" -> emit search_emails(sender="...")
+  * Date queries: "show me emails from the last 10 days" -> emit search_emails(date_from="...", date_to="...")
+  * Keyword queries: "find invoices", "search for project update" -> emit search_emails(keyword="...")
+  * Unread queries: "show only unread emails from this week" -> emit search_emails(unread_only=true, date_from="...", date_to="...")
+- draft_compose(to?, subject?, body?, reply_to_id?):
+  Use whenever drafting, composing, or updating an email.
+  When the user asks to send or draft in one message (e.g. "send email to X saying Y, subject should be Z"), emit draft_compose and then prepare_send with the exact recipient, subject, and body in the same turn.
+- prepare_send(draft_id?, to?, subject?, body?, thread_id?):
+  Prepares one-click confirmation modal with literal payload.
+- fill_form(email_id):
+  Prepares form auto-fill preview with human review step.
+- open_email(email_id):
+  Opens specific email in detail view.
+- apply_filters(criteria):
+  Applies filter criteria to UI.
+- list_recent(folder, limit):
+  Lists recent emails."""

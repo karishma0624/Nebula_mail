@@ -9,11 +9,13 @@ import {
   Clock, 
   ShieldAlert, 
   UserCheck, 
-  Mail 
+  Mail,
+  FileText,
+  Sparkles
 } from 'lucide-react';
 
 export const EmailDetail: React.FC = () => {
-  const { openEmail, setOpenEmail, setView, setComposeDraft } = useMailStore();
+  const { openEmail, setOpenEmail, setView, setComposeDraft, openFormModal, highlightedEmailId } = useMailStore();
 
   if (!openEmail) {
     return (
@@ -22,6 +24,8 @@ export const EmailDetail: React.FC = () => {
       </div>
     );
   }
+
+  const isHighlighted = highlightedEmailId === openEmail.id;
 
   const handleReply = () => {
     // Pre-fill compose draft for reply
@@ -103,6 +107,33 @@ export const EmailDetail: React.FC = () => {
           </div>
         )}
 
+        {/* Form Detected Banner */}
+        {(openEmail.has_form || Boolean(openEmail.form_url) || (openEmail.subject && /form|registration|survey|application/i.test(openEmail.subject)) || (openEmail.snippet && /forms\.gle|docs\.google\.com\/forms|forms\.office\.com|fill out/i.test(openEmail.snippet))) && (
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-cyan-950/40 border border-emerald-500/40 text-emerald-200 flex items-center justify-between gap-4 shadow-lg shadow-emerald-950/30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                <FileText size={18} />
+              </div>
+              <div>
+                <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>Form / Application Detected</span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-[10px] text-emerald-300 font-medium">Ready to Auto-Fill</span>
+                </h5>
+                <p className="text-xs text-emerald-200/80 mt-0.5">
+                  {openEmail.form_url ? `Linked form (${openEmail.form_url.slice(0, 45)}...)` : 'Document form request detected in this email thread.'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => openFormModal(openEmail)}
+              className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-md shadow-emerald-600/30 cursor-pointer"
+            >
+              <Sparkles size={14} />
+              <span>Fill Form with Copilot</span>
+            </button>
+          </div>
+        )}
+
         {/* Email Subject Title */}
         <h2 className="text-2xl font-bold text-white tracking-tight mb-4">
           {openEmail.subject || '(No Subject)'}
@@ -133,7 +164,9 @@ export const EmailDetail: React.FC = () => {
         </div>
 
         {/* Email Body Content */}
-        <div className="glass-panel p-6 rounded-2xl border border-slate-800 text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-sans">
+        <div className={`glass-panel p-6 rounded-2xl border border-slate-800 text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-sans transition-all ${
+          isHighlighted ? 'highlight-citation ring-2 ring-indigo-500 shadow-xl' : ''
+        }`}>
           {openEmail.body_html ? (
             <div 
               className="prose prose-invert max-w-none text-slate-200"

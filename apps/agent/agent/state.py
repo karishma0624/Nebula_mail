@@ -14,3 +14,4 @@ class AgentState(TypedDict):
     retry_count: int
     error: Optional[str]
     final_response: Optional[str]
+    citations: Optional[List[Dict[str, Any]]]

@@ -1,10 +1,13 @@
-import { UIContext, ToolCall } from './types';
+import { UIContext, ToolCall, Citation } from './types';
 
 const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
 
 interface StreamChatOptions {
   message: string;
   uiContext: UIContext;
+  conversationId?: string | null;
+  onConversation?: (data: { conversation_id: string; title?: string }) => void;
+  onCitations?: (citations: Citation[]) => void;
   onToolCall: (toolCall: ToolCall) => void;
   onMessageDelta: (delta: string) => void;
   onError: (error: string) => void;
@@ -14,6 +17,9 @@ interface StreamChatOptions {
 export async function streamChatAssistant({
   message,
   uiContext,
+  conversationId,
+  onConversation,
+  onCitations,
   onToolCall,
   onMessageDelta,
   onError,
@@ -31,6 +37,7 @@ export async function streamChatAssistant({
       body: JSON.stringify({
         message,
         ui_context: uiContext,
+        conversation_id: conversationId || undefined,
       }),
       signal: controller.signal,
     });
@@ -72,7 +79,11 @@ export async function streamChatAssistant({
 
               try {
                 const parsed = JSON.parse(dataStr);
-                if (currentEvent === 'tool_call' || parsed.event === 'tool_call') {
+                if (currentEvent === 'conversation' || parsed.event === 'conversation') {
+                  onConversation?.(parsed.data || parsed);
+                } else if (currentEvent === 'citations' || parsed.event === 'citations') {
+                  onCitations?.(parsed.citations || parsed.data?.citations || parsed);
+                } else if (currentEvent === 'tool_call' || parsed.event === 'tool_call') {
                   onToolCall(parsed.data || parsed);
                 } else if (currentEvent === 'message' || parsed.event === 'message') {
                   onMessageDelta(parsed.delta || parsed.content || parsed.text || '');

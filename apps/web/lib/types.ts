@@ -14,6 +14,17 @@ export interface Email {
   date?: string;
   received_at?: string;
   label_ids?: string[];
+  has_form?: boolean;
+  form_url?: string;
+}
+
+export interface Citation {
+  number: number;
+  email_id: string;
+  sender?: string;
+  subject?: string;
+  received_at?: string;
+  snippet?: string;
 }
 
 export interface FilterCriteria {
@@ -26,6 +37,7 @@ export interface FilterCriteria {
 }
 
 export interface ComposeDraft {
+  draft_id?: string;
   to: string;
   subject: string;
   body: string;
@@ -47,6 +59,7 @@ export interface ChatMessage {
   timestamp: string;
   toolCall?: ToolCall;
   isStreaming?: boolean;
+  citations?: Citation[];
 }
 
 export interface UIContext {
@@ -60,9 +73,25 @@ export interface UIContext {
   active_filters: FilterCriteria;
 }
 
+export type EmailCategory = 'primary' | 'promotions' | 'social' | 'updates';
+
+export interface CategoryCounts {
+  total: number;
+  unread: number;
+}
+
+export interface CategoryStats {
+  primary: CategoryCounts;
+  promotions: CategoryCounts;
+  social: CategoryCounts;
+  updates: CategoryCounts;
+}
+
 export interface MailboxStats {
   total: number;
   unread: number;
+  sentTotal?: number;
+  categories?: CategoryStats;
 }
 
 export interface EmailListResponse {
@@ -76,4 +105,7 @@ export interface EmailListResponse {
   total_count?: number;
   unread_count?: number;
   is_unread_only?: boolean;
+  category?: EmailCategory;
+  category_total?: number;
+  category_unread?: number;
 }

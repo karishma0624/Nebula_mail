@@ -68,13 +68,41 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       const folder = args.folder === 'sent' ? 'sent' : 'inbox';
       store.setView(folder);
 
-      // Construct descriptive summary of query
+      const criteria: Partial<FilterCriteria> = {
+        sender: args.sender || undefined,
+        keyword: args.keyword || undefined,
+        date_from: args.date_from || undefined,
+        date_to: args.date_to || undefined,
+        unread_only: args.unread_only !== undefined ? Boolean(args.unread_only) : undefined,
+        folder,
+      };
+
+      // Reset stale filters first so new search doesn't inherit leftover dates/senders (Section 16)
+      store.resetFilters();
+      store.setFilters(criteria);
+
+      // Construct literal search query for Gmail (inclusive before: date)
       const parts: string[] = [];
       if (args.sender) parts.push(`from:${args.sender}`);
       if (args.keyword) parts.push(args.keyword);
       if (args.unread_only) parts.push('is:unread');
       if (args.date_from) parts.push(`after:${args.date_from}`);
-      if (args.date_to) parts.push(`before:${args.date_to}`);
+      if (args.date_to) {
+        try {
+          const p = args.date_to.split('-').map(Number);
+          if (p.length === 3) {
+            const nextDate = new Date(p[0], p[1] - 1, p[2] + 1);
+            const y = nextDate.getFullYear();
+            const m = String(nextDate.getMonth() + 1).padStart(2, '0');
+            const d = String(nextDate.getDate()).padStart(2, '0');
+            parts.push(`before:${y}-${m}-${d}`);
+          } else {
+            parts.push(`before:${args.date_to}`);
+          }
+        } catch {
+          parts.push(`before:${args.date_to}`);
+        }
+      }
       const queryDesc = parts.join(' ') || 'Mailbox Search';
 
       if (toolCall.result?.emails && Array.isArray(toolCall.result.emails)) {
@@ -107,13 +135,14 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
     }
 
     case 'apply_filters': {
+      const c = args.criteria || args;
       const criteria: Partial<FilterCriteria> = {
-        sender: args.sender || undefined,
-        keyword: args.keyword || undefined,
-        date_from: args.date_from || undefined,
-        date_to: args.date_to || undefined,
-        unread_only: args.unread_only !== undefined ? Boolean(args.unread_only) : undefined,
-        folder: args.folder || 'inbox',
+        sender: c.sender || undefined,
+        keyword: c.keyword || undefined,
+        date_from: c.date_from || undefined,
+        date_to: c.date_to || undefined,
+        unread_only: c.unread_only !== undefined ? Boolean(c.unread_only) : undefined,
+        folder: c.folder || 'inbox',
       };
 
       store.setView(criteria.folder === 'sent' ? 'sent' : 'inbox');
@@ -145,13 +174,38 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
     }
 
     case 'prepare_send': {
-      const draft = store.composeDraft;
+      const currentDraft = store.composeDraft;
+      const draft_id = args.draft_id || currentDraft.draft_id || ('draft-' + Date.now());
+      const to = args.to || currentDraft.to || '';
+      const subject = args.subject || currentDraft.subject || '';
+      const body = args.body || currentDraft.body || '';
+      const thread_id = args.thread_id || currentDraft.thread_id;
+
+      // Update composeDraft directly to guarantee zero drift
+      store.setComposeDraft({ draft_id, to, subject, body, thread_id });
+
       store.openConfirmModal({
-        to: draft.to,
-        subject: draft.subject,
-        body: draft.body,
-        thread_id: draft.thread_id,
+        draft_id,
+        to,
+        subject,
+        body,
+        thread_id,
       });
+      break;
+    }
+
+    case 'fill_form': {
+      const emailId = args.email_id;
+      let targetEmail = store.openEmail;
+      if (emailId && (!targetEmail || targetEmail.id !== emailId)) {
+        targetEmail = store.emails.find((e: Email) => e.id === emailId) || null;
+      }
+      if (!targetEmail && store.emails.length > 0) {
+        targetEmail = store.emails[0];
+      }
+      if (targetEmail) {
+        store.openFormModal(targetEmail);
+      }
       break;
     }
 

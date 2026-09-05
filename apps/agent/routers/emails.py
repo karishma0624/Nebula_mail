@@ -21,6 +21,7 @@ class SendEmailRequest(BaseModel):
     subject: str
     body: str
     thread_id: Optional[str] = None
+    draft_id: Optional[str] = None
 
 class DraftEmailRequest(BaseModel):
     to: str
@@ -142,65 +143,91 @@ def handle_oauth_callback(code: str = Query(...), state: Optional[str] = Query(N
 
 @router.get("/emails/stats")
 def get_mailbox_stats():
-    """Get accurate total and unread counts for inbox and sent folders from Gmail labels."""
+    """Get accurate total and unread counts for inbox, sent, and all Gmail categories."""
     client = get_current_gmail_client()
-    inbox_stats = client.get_label_stats("INBOX")
-    sent_stats = client.get_label_stats("SENT")
-    return {
-        "inbox": inbox_stats,
-        "sent": sent_stats
-    }
+    return client.get_all_mailbox_stats()
 
 @router.get("/emails/list")
 def list_emails(
     folder: str = Query("inbox", enum=["inbox", "sent", "draft"]),
     q: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
     limit: int = Query(25, ge=1, le=100),
     page_token: Optional[str] = Query(None),
     unread_only: bool = Query(False)
 ):
     client = get_current_gmail_client()
     
+    clean_q = q.strip() if isinstance(q, str) and q.strip() else None
+    clean_folder = folder if isinstance(folder, str) and folder in ["inbox", "sent", "draft"] else "inbox"
+    clean_limit = limit if isinstance(limit, int) else 25
+    clean_token = page_token if isinstance(page_token, str) and page_token.strip() else None
+    clean_unread = bool(unread_only) if not hasattr(unread_only, "default") else False
+
+    is_search = bool(clean_q)
+
+    # STRICT ISOLATION: activeCategory MUST ONLY affect Inbox requests, NEVER Sent or Search
+    clean_cat = category.strip().lower() if (clean_folder == "inbox" and not is_search and isinstance(category, str) and category.strip()) else None
+
     query_parts = []
-    if q and q.strip():
-        query_parts.append(q.strip())
-    if unread_only:
+    if clean_q:
+        query_parts.append(clean_q)
+    if clean_unread and "is:unread" not in (clean_q or ""):
         query_parts.append("is:unread")
 
     full_query = " ".join(query_parts)
 
     list_res = client.list_messages(
-        folder=folder, 
+        folder=clean_folder, 
         query=full_query, 
-        max_results=limit, 
-        page_token=page_token
+        max_results=clean_limit, 
+        page_token=clean_token,
+        category=clean_cat
     )
     
     emails = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
     next_page_token = list_res.get("next_page_token") if isinstance(list_res, dict) else None
     result_size_estimate = list_res.get("result_size_estimate", len(emails)) if isinstance(list_res, dict) else len(emails)
 
-    is_search = bool(q and q.strip())
     response_data: Dict[str, Any] = {
         "emails": emails,
         "count": len(emails),
         "next_page_token": next_page_token,
         "result_size_estimate": result_size_estimate,
         "is_search": is_search,
-        "is_unread_only": unread_only,
+        "is_unread_only": clean_unread,
+        "category": clean_cat,
+        "is_approximate": is_search or (result_size_estimate >= 100),
     }
 
-    stats = client.get_label_stats(label_id=folder.upper())
+    # Authoritative label statistics for the primary folder
+    stats = client.get_label_stats(label_id=clean_folder.upper())
     total_folder = stats.get("total", len(emails))
     unread_folder = stats.get("unread", 0)
 
+    category_label_map = {
+        "primary": "CATEGORY_PERSONAL",
+        "personal": "CATEGORY_PERSONAL",
+        "promotions": "CATEGORY_PROMOTIONS",
+        "social": "CATEGORY_SOCIAL",
+        "updates": "CATEGORY_UPDATES"
+    }
+
     if is_search:
-        response_data["search_query"] = q.strip()
+        response_data["search_query"] = clean_q
         response_data["search_total_estimate"] = result_size_estimate
         response_data["total_count"] = result_size_estimate
         response_data["unread_count"] = unread_folder
-    elif unread_only:
-        # In unread-only mode, total count represents total unread messages in the folder
+    elif clean_folder == "inbox" and clean_cat and clean_cat.lower() in category_label_map:
+        cat_label = category_label_map[clean_cat.lower()]
+        cat_stats = client.get_label_stats(cat_label)
+        cat_total = cat_stats.get("total", len(emails))
+        cat_unread = cat_stats.get("unread", 0)
+        response_data["category_total"] = cat_total
+        response_data["category_unread"] = cat_unread
+        response_data["total_count"] = cat_unread if clean_unread else cat_total
+        response_data["unread_count"] = cat_unread
+    elif clean_unread:
         response_data["total_count"] = unread_folder
         response_data["unread_count"] = unread_folder
     else:
@@ -228,13 +255,71 @@ def create_draft(req: DraftEmailRequest):
     )
     return {"status": "draft_created", "draft": draft}
 
+class RejectSendRequest(BaseModel):
+    to: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+
+@router.post("/emails/reject-send")
+def reject_send(req: RejectSendRequest):
+    try:
+        from agent.tools import log_tool_audit
+        log_tool_audit("send_email", req.model_dump(), {"status": "rejected_by_user"}, "rejected")
+    except Exception as e:
+        print(f"Error logging rejected send: {e}")
+    return {"status": "rejected"}
+
 @router.post("/emails/send")
 def send_email(req: SendEmailRequest):
     client = get_current_gmail_client()
-    result = client.send_message(
-        to=req.to,
-        subject=req.subject,
-        body=req.body,
-        thread_id=req.thread_id
-    )
-    return {"status": "sent", "result": result}
+    print(f"[SendEmail] Transmitting: draft_id={req.draft_id}, to={req.to}, subject='{req.subject}', body='{req.body[:60]}...'")
+    try:
+        result = client.send_message(
+            to=req.to,
+            subject=req.subject,
+            body=req.body,
+            thread_id=req.thread_id
+        )
+        try:
+            from agent.tools import log_tool_audit
+            log_tool_audit("send_email", req.model_dump(), result, "executed")
+        except Exception as err:
+            print(f"Error logging send_email audit: {err}")
+        return {"status": "sent", "result": result, "draft_id": req.draft_id}
+    except Exception as e:
+        try:
+            from agent.tools import log_tool_audit
+            log_tool_audit("send_email", req.model_dump(), {"error": str(e)}, "failed")
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SubmitFormRequest(BaseModel):
+    email_id: Optional[str] = None
+    form_type: str = "pdf"
+    fields: Dict[str, Any]
+    action: str = "submit"
+
+@router.post("/forms/submit")
+def submit_form(req: SubmitFormRequest):
+    from db.supabase_client import ensure_default_user_id
+    user_id = ensure_default_user_id()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    supabase = get_supabase()
+    status = "submitted" if req.action == "submit" else ("rejected" if req.action == "reject" else "draft")
+    if supabase:
+        try:
+            res = supabase.table("form_fill_sessions").insert({
+                "user_id": user_id,
+                "email_id": req.email_id,
+                "form_type": req.form_type if req.form_type in ['pdf', 'google_form', 'ms_form', 'other'] else 'other',
+                "fields": req.fields,
+                "status": status
+            }).execute()
+            return {"status": status, "session": res.data[0] if res.data else None}
+        except Exception as e:
+            print(f"Error saving form fill session: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"status": status}
+
