@@ -64,6 +64,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEdit }) => 
         .replace(/\[(.*?)\]\(.*?\)/g, '$1')
         .replace(/\*\*(.*?)\*\*/g, '$1');
       const utterance = new SpeechSynthesisUtterance(spokenText);
+      const preferredLang = typeof window !== 'undefined' ? (localStorage.getItem('nebula_preferred_language') || 'auto') : 'auto';
+      if (preferredLang !== 'auto') utterance.lang = preferredLang;
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.onend = () => setIsSpeaking(false);

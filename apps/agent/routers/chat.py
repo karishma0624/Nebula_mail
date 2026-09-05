@@ -45,12 +45,13 @@ async def chat_endpoint(req: ChatRequest):
                 print(f"Error creating conversation: {e}")
                 conversation_id = None
 
-    # 2. Load bounded message history (last 20 messages)
+    # 2. Load bounded message history (most recent 20 messages)
     history_messages = []
     if supabase and user_id and conversation_id:
         try:
-            past_msgs_res = supabase.table("messages").select("*").eq("conversation_id", conversation_id).eq("user_id", user_id).order("created_at", desc=False).limit(20).execute()
-            for m in (past_msgs_res.data or []):
+            past_msgs_res = supabase.table("messages").select("*").eq("conversation_id", conversation_id).eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
+            raw_rows = list(reversed(past_msgs_res.data or []))
+            for m in raw_rows:
                 role = m.get("role")
                 content = m.get("content", "")
                 if role == "user":
@@ -59,6 +60,7 @@ async def chat_endpoint(req: ChatRequest):
                     history_messages.append(AIMessage(content=content))
         except Exception as e:
             print(f"Error loading conversation history: {e}")
+
 
     # 3. Persist user message
     if supabase and user_id and conversation_id:

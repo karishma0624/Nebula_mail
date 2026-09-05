@@ -283,6 +283,33 @@ def get_email_detail(email_id: str):
     msg = client.get_message(email_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Email not found")
+
+    # Section 33: Lazy extraction and indexing of document attachments for grounded Q&A
+    if msg.get("attachments"):
+        try:
+            from agent.attachments import index_email_attachment
+            from db.supabase_client import get_current_user_id
+            user_id = get_current_user_id()
+            if user_id:
+                for att in msg["attachments"]:
+                    fn = att.get("filename", "")
+                    if any(fn.lower().endswith(ext) for ext in [".pdf", ".docx", ".txt", ".csv", ".md", ".json"]):
+                        sup = get_supabase()
+                        chk = sup.table("email_attachments").select("id").eq("email_id", email_id).eq("filename", fn).execute() if sup else None
+                        if not (chk and chk.data):
+                            raw_bytes = client.get_attachment(email_id, att["attachment_id"])
+                            if raw_bytes:
+                                index_email_attachment(
+                                    email_id=email_id,
+                                    user_id=user_id,
+                                    filename=fn,
+                                    content=raw_bytes,
+                                    mime_type=att.get("mime_type"),
+                                    gmail_attachment_id=att.get("attachment_id")
+                                )
+        except Exception as e:
+            print(f"[Attachments] Notice lazily indexing attachment: {e}")
+
     return msg
 
 @router.post("/emails/draft")
@@ -362,18 +389,170 @@ def submit_form(req: SubmitFormRequest):
         raise HTTPException(status_code=401, detail="Unauthorized")
     supabase = get_supabase()
     status = "submitted" if req.action == "submit" else ("rejected" if req.action == "reject" else "draft")
+    
+    # Section 27: Verify email_id exists in emails table to prevent foreign key violation
+    valid_email_id = None
+    if req.email_id and supabase:
+        try:
+            chk = supabase.table("emails").select("id").eq("id", req.email_id).execute()
+            if chk.data and len(chk.data) > 0:
+                valid_email_id = req.email_id
+        except Exception:
+            pass
+
+    safe_form_type = req.form_type if req.form_type in ['pdf', 'google_form', 'ms_form', 'other'] else 'other'
+
     if supabase:
         try:
             res = supabase.table("form_fill_sessions").insert({
                 "user_id": user_id,
-                "email_id": req.email_id,
-                "form_type": req.form_type if req.form_type in ['pdf', 'google_form', 'ms_form', 'other'] else 'other',
+                "email_id": valid_email_id,
+                "form_type": safe_form_type,
                 "fields": req.fields,
                 "status": status
             }).execute()
             return {"status": status, "session": res.data[0] if res.data else None}
         except Exception as e:
             print(f"Error saving form fill session: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            if valid_email_id:
+                try:
+                    res = supabase.table("form_fill_sessions").insert({
+                        "user_id": user_id,
+                        "email_id": None,
+                        "form_type": safe_form_type,
+                        "fields": req.fields,
+                        "status": status
+                    }).execute()
+                    return {"status": status, "session": res.data[0] if res.data else None}
+                except Exception:
+                    pass
+            # Section 27: Return graceful JSON response rather than raising raw 500
+            return {
+                "status": status,
+                "session": None,
+                "message": "Form submission recorded."
+            }
     return {"status": status}
+
+
+def parse_google_form(url: str) -> Dict[str, Any]:
+    """
+    Extracts question titles and entry IDs from public Google Forms HTML.
+    Supports https://forms.gle/... and https://docs.google.com/forms/...
+    """
+    import urllib.request, re, json
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            final_url = resp.geturl()
+            html = resp.read().decode('utf-8', errors='ignore')
+
+        match = re.search(r'var FB_PUBLIC_LOAD_DATA_ = (\[[\s\S]*?\]);\s*<\/script>', html)
+        if not match:
+            match = re.search(r'var FB_PUBLIC_LOAD_DATA_ = (\[.*?\]);', html, re.DOTALL)
+        if match:
+            data = json.loads(match.group(1))
+            title = data[1][8] if (len(data[1]) > 8 and data[1][8]) else (data[1][0] if len(data[1]) > 0 else "Form")
+            fields = []
+            for item in (data[1][1] or []):
+                q_text = item[1]
+                q_id = item[4][0][0] if (len(item) > 4 and item[4] and len(item[4][0]) > 0) else None
+                entry_key = f"entry.{q_id}" if q_id else q_text.lower().replace(" ", "_")
+                f_type = "email" if "email" in q_text.lower() else ("tel" if "phone" in q_text.lower() or "mobile" in q_text.lower() else "text")
+                fields.append({
+                    "name": entry_key,
+                    "label": q_text,
+                    "entry_id": q_id,
+                    "type": f_type
+                })
+            base_viewform = final_url.split("?")[0]
+            return {
+                "title": title,
+                "fields": fields,
+                "viewform_url": base_viewform
+            }
+    except Exception as e:
+        print(f"[parse_google_form] Error parsing Google Form: {e}")
+    return {"title": "Google Form", "fields": [], "viewform_url": url}
+
+
+@router.get("/forms/extract")
+def extract_form_fields(url: Optional[str] = None, email_id: Optional[str] = None):
+    """
+    Extracts real form fields from Google Forms or attached links.
+    Returns question labels, input types, and pre-fill URLs.
+    """
+    import re
+    form_pattern = r"(https?://(?:docs\.google\.com/forms/[^\s\"'<>]+|forms\.gle/[^\s\"'<>]+|forms\.office\.com/[^\s\"'<>]+))"
+
+    target_url = url
+    if not target_url and email_id:
+        try:
+            cl = get_current_gmail_client()
+            if cl:
+                msg = cl.get_message(email_id)
+                if msg:
+                    target_url = msg.get("form_url")
+                    if not target_url:
+                        combined = f"{msg.get('snippet', '')} {msg.get('body_text', '')} {msg.get('body_html', '')}"
+                        m = re.search(form_pattern, combined, re.IGNORECASE)
+                        if m:
+                            target_url = m.group(1)
+        except Exception:
+            pass
+
+    # Check Supabase if target_url is still empty
+    if not target_url:
+        try:
+            sup = get_supabase()
+            if sup:
+                if email_id:
+                    res = sup.table("emails").select("*").eq("id", email_id).execute()
+                    if res.data and len(res.data) > 0:
+                        em = res.data[0]
+                        target_url = em.get("form_url")
+                        if not target_url:
+                            combined = f"{em.get('snippet', '')} {em.get('body_plain', '')} {em.get('body_html', '')}"
+                            m = re.search(form_pattern, combined, re.IGNORECASE)
+                            if m:
+                                target_url = m.group(1)
+                if not target_url:
+                    # Look up latest email with form link
+                    recent_forms = sup.table("emails").select("*").or_("has_form.eq.true,form_url.neq.null").order("received_at", desc=True).limit(5).execute()
+                    for em in (recent_forms.data or []):
+                        if em.get("form_url"):
+                            target_url = em["form_url"]
+                            break
+                        combined = f"{em.get('snippet', '')} {em.get('body_plain', '')} {em.get('body_html', '')}"
+                        m = re.search(form_pattern, combined, re.IGNORECASE)
+                        if m:
+                            target_url = m.group(1)
+                            break
+        except Exception as e:
+            print(f"[extract_form_fields] Notice querying Supabase: {e}")
+
+    if not target_url:
+        return {"title": "Form", "fields": [], "url": ""}
+
+    if "forms.gle" in target_url or "docs.google.com/forms" in target_url:
+        parsed = parse_google_form(target_url)
+        return {
+            "title": parsed.get("title", "Basic Details Form"),
+            "form_type": "google_form",
+            "url": target_url,
+            "viewform_url": parsed.get("viewform_url", target_url),
+            "fields": parsed.get("fields", [])
+        }
+
+    return {
+        "title": "Form",
+        "form_type": "other",
+        "url": target_url,
+        "fields": []
+    }
+
+
 

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Email } from '../../lib/types';
 import { useMailStore } from '../../lib/store';
-import { Star } from 'lucide-react';
+import { Star, Paperclip } from 'lucide-react';
 import { HighlightedText } from '../ui/HighlightedText';
 
 interface EmailListItemProps {
@@ -132,6 +132,11 @@ export const EmailListItem: React.FC<EmailListItemProps> = ({
         {(email.has_form || email.form_url) && (
           <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
             Form
+          </span>
+        )}
+        {email.attachments && email.attachments.length > 0 && (
+          <span className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-indigo-400 transition" title={`${email.attachments.length} attachment(s)`}>
+            <Paperclip size={13} />
           </span>
         )}
         <span

@@ -9,8 +9,10 @@ import {
   Flame,
   Mic, 
   MicOff,
-  SlidersHorizontal 
+  SlidersHorizontal,
+  SquarePen
 } from 'lucide-react';
+
 import { useMailStore } from '../../lib/store';
 import { ChatMessage as ChatMessageType } from '../../lib/types';
 import { ChatMessage } from './ChatMessage';
@@ -29,8 +31,13 @@ export const AssistantPanel: React.FC = () => {
     activeFilters,
     activeConversationId,
     setActiveConversationId,
-    toggleCopilotDrawer
+    toggleCopilotDrawer,
+    isSearchActive,
+    searchQueryDescription,
+    filteredEmails,
+    emails
   } = useMailStore();
+
 
   const [inputMessage, setInputMessage] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -75,11 +82,12 @@ export const AssistantPanel: React.FC = () => {
       return;
     }
 
+    const preferredLang = typeof window !== 'undefined' ? (localStorage.getItem('nebula_preferred_language') || 'auto') : 'auto';
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     recognition.continuous = false;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.lang = preferredLang !== 'auto' ? preferredLang : 'en-US';
 
     recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event: any) => {
@@ -122,13 +130,14 @@ export const AssistantPanel: React.FC = () => {
     setIsStreaming(true);
 
     let accumulatedText = '';
+    const preferredLang = typeof window !== 'undefined' ? (localStorage.getItem('nebula_preferred_language') || 'auto') : 'auto';
 
     await streamChatAssistant({
       message: text,
       conversationId: activeConversationId || undefined,
       uiContext: {
         current_view: currentView,
-        open_email: openEmail
+        open_email: (currentView === 'detail' && openEmail)
           ? {
               id: openEmail.id,
               sender: openEmail.sender,
@@ -137,7 +146,18 @@ export const AssistantPanel: React.FC = () => {
             }
           : null,
         active_filters: activeFilters,
+        is_search_active: isSearchActive,
+        search_query: searchQueryDescription,
+        preferred_language: preferredLang !== 'auto' ? preferredLang : undefined,
+        top_emails: (filteredEmails && filteredEmails.length > 0 ? filteredEmails : emails || []).slice(0, 6).map(e => ({
+          id: e.id,
+          sender: e.sender,
+          subject: e.subject,
+          snippet: e.snippet,
+          date: e.date || e.received_at
+        }))
       },
+
       onConversation: (data) => {
         if (data.conversation_id) setActiveConversationId(data.conversation_id);
       },
@@ -193,6 +213,7 @@ export const AssistantPanel: React.FC = () => {
           if (localStorage.getItem('nebula_voice_autoread') === 'true' && accumulatedText) {
             const cleanText = accumulatedText.replace(/\[\d+\]/g, '');
             const utter = new SpeechSynthesisUtterance(cleanText);
+            if (preferredLang !== 'auto') utter.lang = preferredLang;
             window.speechSynthesis.speak(utter);
           }
         }
@@ -229,6 +250,20 @@ export const AssistantPanel: React.FC = () => {
     handleSendMessage(newContent);
   };
 
+  // Section 30: Explicit New Chat action in Copilot panel header
+  const handleStartNewChat = () => {
+    setActiveConversationId(null);
+    setMessages([
+      {
+        id: 'welcome',
+        sender: 'assistant',
+        content: 'Hello! I am your Nebula Mail Copilot. Tell me what to do and I will control your mailbox UI directly.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    setInputMessage('');
+  };
+
   const contextualSuggestions = [
     "Show me my unread emails",
     "is AWS invoice available",
@@ -257,6 +292,14 @@ export const AssistantPanel: React.FC = () => {
 
         <div className="flex items-center gap-1">
           <button
+            onClick={handleStartNewChat}
+            className="text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            title="Start New Chat"
+            aria-label="New chat"
+          >
+            <SquarePen size={15} />
+          </button>
+          <button
             onClick={toggleCopilotDrawer}
             className="text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             title="Copilot Menu & Tools (History, Prompts, Settings)"
@@ -273,18 +316,20 @@ export const AssistantPanel: React.FC = () => {
         </div>
       </div>
 
+
       {/* Live Context Chip Bar */}
       <div className="px-4 py-2 bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-1.5">
           <Layers size={12} className="text-blue-600 dark:text-indigo-400" />
-          <span>View: <strong className="text-slate-800 dark:text-slate-200 uppercase font-semibold">{currentView}</strong></span>
+          <span>View: <strong className="text-slate-800 dark:text-slate-200 uppercase font-semibold">{isSearchActive ? 'SEARCH RESULTS' : currentView}</strong></span>
         </div>
-        {openEmail && (
+        {currentView === 'detail' && openEmail && (
           <span className="truncate max-w-[160px] text-slate-700 dark:text-slate-300 font-medium">
             Email: {openEmail.sender.split('<')[0]}
           </span>
         )}
       </div>
+
 
       {/* Chat Messages */}
       <div className="flex-1 p-4 overflow-y-auto space-y-2.5">

@@ -8,6 +8,7 @@ export interface Email {
   subject: string;
   snippet: string;
   body_text?: string;
+  body_plain?: string;
   body_html?: string;
   folder: 'inbox' | 'sent' | 'draft';
   is_unread: boolean;
@@ -16,6 +17,7 @@ export interface Email {
   label_ids?: string[];
   has_form?: boolean;
   form_url?: string;
+  attachments?: Array<{ filename: string; attachment_id?: string; mime_type?: string; size?: number }>;
 }
 
 export interface Citation {
@@ -71,6 +73,16 @@ export interface UIContext {
     snippet: string;
   } | null;
   active_filters: FilterCriteria;
+  is_search_active?: boolean;
+  search_query?: string | null;
+  top_emails?: Array<{
+    id: string;
+    sender: string;
+    subject: string;
+    snippet: string;
+    date?: string;
+  }>;
+  preferred_language?: string;
 }
 
 export type EmailCategory = 'primary' | 'promotions' | 'social' | 'updates';

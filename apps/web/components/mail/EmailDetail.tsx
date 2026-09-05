@@ -11,7 +11,8 @@ import {
   UserCheck, 
   Mail,
   FileText,
-  Sparkles
+  Sparkles,
+  Paperclip
 } from 'lucide-react';
 
 export const EmailDetail: React.FC = () => {
@@ -176,6 +177,41 @@ export const EmailDetail: React.FC = () => {
             openEmail.body_text || openEmail.snippet
           )}
         </div>
+
+        {/* Attachments Section (Section 33 Document Reading) */}
+        {openEmail.attachments && openEmail.attachments.length > 0 && (
+          <div className="mt-6 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+              <Paperclip size={14} className="text-indigo-400" />
+              <span>Attachments ({openEmail.attachments.length})</span>
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {openEmail.attachments.map((att, idx) => (
+                <div 
+                  key={idx}
+                  className="flex items-center justify-between p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 hover:border-indigo-500/40 transition group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
+                      <FileText size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-slate-200 truncate group-hover:text-indigo-300 transition">
+                        {att.filename}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {att.size ? `${Math.round(att.size / 1024)} KB` : 'Document'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-medium text-indigo-400/90 bg-indigo-500/10 px-2 py-0.5 rounded-lg border border-indigo-500/20 shrink-0">
+                    Grounded Q&A
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

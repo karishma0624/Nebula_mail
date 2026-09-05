@@ -59,6 +59,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [autoReadAloud, setAutoReadAloud] = useState(false);
   const [sendMode, setSendMode] = useState<'confirm' | 'automatic'>('confirm');
+  const [preferredLanguage, setPreferredLanguage] = useState<string>('auto');
 
   // Feedback State
   const [feedbackRating, setFeedbackRating] = useState<'positive' | 'negative' | null>(null);
@@ -77,6 +78,9 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       const storedVoice = localStorage.getItem('nebula_voice_autoread') === 'true';
       setAutoReadAloud(storedVoice);
 
+      const storedLang = localStorage.getItem('nebula_preferred_language') || 'auto';
+      setPreferredLanguage(storedLang);
+
       // Load user send_mode preference
       fetch(`${AGENT_API_URL}/user/settings`)
         .then(res => res.ok ? res.json() : null)
@@ -88,6 +92,14 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       return () => window.removeEventListener('themechange', updateTheme);
     }
   }, []);
+
+  const handleLanguageChange = (lang: string) => {
+    setPreferredLanguage(lang);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nebula_preferred_language', lang);
+      window.dispatchEvent(new Event('languagechange'));
+    }
+  };
 
   const handleSendModeChange = async (mode: 'confirm' | 'automatic') => {
     setSendMode(mode);
@@ -476,6 +488,27 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                     </>
                   )}
                 </button>
+              </div>
+
+              {/* Language Selector (Section 34) */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Copilot Language</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Response & speech language preference</p>
+                </div>
+                <select
+                  value={preferredLanguage}
+                  onChange={(e) => handleLanguageChange(e.target.value)}
+                  className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:border-blue-500 transition cursor-pointer"
+                >
+                  <option value="auto">Auto-detect (Default)</option>
+                  <option value="en-US">English</option>
+                  <option value="ta-IN">தமிழ் (Tamil)</option>
+                  <option value="hi-IN">हिन्दी (Hindi)</option>
+                  <option value="es-ES">Español (Spanish)</option>
+                  <option value="fr-FR">Français (French)</option>
+                  <option value="de-DE">Deutsch (German)</option>
+                </select>
               </div>
             </div>
           )}

@@ -31,12 +31,23 @@ export const FormFillModal: React.FC = () => {
     purpose: 'Quarterly Project Assessment',
     comments: 'All milestones on track.'
   });
+  const [fieldMeta, setFieldMeta] = useState<Array<{ name: string; label: string; entry_id?: number }>>([]);
+  const [targetFormUrl, setTargetFormUrl] = useState<string | null>(null);
+  const [isLoadingFields, setIsLoadingFields] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (formModalEmail) {
-      const url = formModalEmail.form_url || '';
+      let url = formModalEmail.form_url || '';
+      if (!url) {
+        const fullText = `${formModalEmail.snippet || ''} ${formModalEmail.body_plain || ''} ${formModalEmail.body_html || ''}`;
+        const match = fullText.match(/https?:\/\/(?:docs\.google\.com\/forms\/[^\s"'<>]+|forms\.gle\/[^\s"'<>]+|forms\.office\.com\/[^\s"'<>]+)/i);
+        if (match) {
+          url = match[0];
+        }
+      }
+
       let detectedType: 'pdf' | 'google_form' | 'ms_form' | 'other' = 'pdf';
       if (url.includes('forms.gle') || url.includes('google.com/forms')) {
         detectedType = 'google_form';
@@ -47,18 +58,75 @@ export const FormFillModal: React.FC = () => {
       }
 
       setFormType(detectedType);
-      setFields({
-        fullName: 'Karishma',
-        email: userEmail || 'user@nebula.local',
-        referenceSubject: formModalEmail.subject || '',
-        purpose: 'Form submission for: ' + (formModalEmail.subject || 'Application'),
-        additionalNotes: 'Pre-filled with verified context from your inbox.'
-      });
+      setTargetFormUrl(url || null);
       setStatusMessage(null);
+      setFields({});
+      setFieldMeta([]);
+
+      // Dynamically extract real Google Form or web questions from backend
+      setIsLoadingFields(true);
+      const queryParam = url
+        ? `url=${encodeURIComponent(url)}&email_id=${formModalEmail.id}`
+        : `email_id=${formModalEmail.id}`;
+
+      fetch(`${AGENT_API_URL}/forms/extract?${queryParam}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            if (data.form_type) setFormType(data.form_type);
+            if (data.viewform_url) setTargetFormUrl(data.viewform_url);
+            else if (data.url) setTargetFormUrl(data.url);
+
+            if (data.fields && data.fields.length > 0) {
+              const dynamicMap: Record<string, string> = {};
+              const meta: Array<{ name: string; label: string; entry_id?: number }> = [];
+
+              data.fields.forEach((f: any) => {
+                const lbl = f.label || f.name;
+                const lblLower = lbl.toLowerCase();
+                let val = '';
+                if (lblLower.includes('name')) {
+                  val = 'Karishma';
+                } else if (lblLower.includes('email')) {
+                  val = userEmail || 'karish1234coding@gmail.com';
+                } else if (lblLower.includes('phone') || lblLower.includes('mobile')) {
+                  val = '';
+                } else {
+                  val = f.value || '';
+                }
+                dynamicMap[lbl] = val;
+                meta.push({ name: f.name, label: lbl, entry_id: f.entry_id });
+              });
+
+              setFields(dynamicMap);
+              setFieldMeta(meta);
+            }
+          }
+        })
+        .catch((err) => console.warn('Notice extracting form fields:', err))
+        .finally(() => setIsLoadingFields(false));
     }
   }, [formModalEmail, userEmail]);
 
   if (!isFormModalOpen || !formModalEmail) return null;
+
+  const getPrefilledUrl = (): string => {
+    const base = targetFormUrl || formModalEmail.form_url;
+    if (!base) return '';
+    if (fieldMeta.length === 0) return base;
+    const params = new URLSearchParams();
+    params.set('usp', 'pp_url');
+    fieldMeta.forEach((m) => {
+      const val = fields[m.label] || fields[m.name];
+      if (val && m.name && m.name.startsWith('entry.')) {
+        params.set(m.name, val);
+      }
+    });
+    const qs = params.toString();
+    const cleanBase = base.split('?')[0];
+    return qs ? `${cleanBase}?${qs}` : cleanBase;
+  };
+
 
   const handleFieldChange = (key: string, value: string) => {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -81,13 +149,16 @@ export const FormFillModal: React.FC = () => {
       });
 
       if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-
-      setStatusMessage({
+        throw new Error("Couldn't submit form automatically — try filling it manually via the link.");
+      }      setStatusMessage({
         type: 'success',
         text: 'Form submitted successfully! Recorded in audit log.'
       });
+
+      const prefilled = getPrefilledUrl();
+      if (prefilled && typeof window !== 'undefined') {
+        window.open(prefilled, '_blank');
+      }
 
       setTimeout(() => {
         setIsSubmitting(false);
@@ -95,9 +166,12 @@ export const FormFillModal: React.FC = () => {
       }, 1400);
     } catch (err: any) {
       setIsSubmitting(false);
+      const friendlyMsg = (err.message && !err.message.includes('500') && !err.message.includes('status'))
+        ? err.message
+        : "Couldn't read this form's fields or submit automatically — try filling it manually using the link above.";
       setStatusMessage({
         type: 'error',
-        text: err.message || 'Failed to submit form'
+        text: friendlyMsg
       });
     }
   };
@@ -155,19 +229,28 @@ export const FormFillModal: React.FC = () => {
             <div>
               <span className="font-semibold text-white">Source Email: </span>
               <span className="text-slate-300">{formModalEmail.subject}</span>
-              {formModalEmail.form_url && (
+              {(targetFormUrl || formModalEmail.form_url) && (
                 <a
-                  href={formModalEmail.form_url}
+                  href={getPrefilledUrl() || targetFormUrl || formModalEmail.form_url}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-1 flex items-center gap-1 text-[11px] text-cyan-400 hover:underline"
                 >
-                  <span>Open Form Target</span>
+                  <span>Open Pre-filled Form Target</span>
                   <ExternalLink size={10} />
                 </a>
               )}
             </div>
           </div>
+
+          {/* Dynamic question loading status */}
+          {isLoadingFields && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/20 text-xs text-cyan-300">
+              <Loader2 size={14} className="animate-spin text-cyan-400" />
+              <span>Extracting exact questions from Google Forms...</span>
+            </div>
+          )}
+
 
           {/* Status Feedback */}
           {statusMessage && (
@@ -182,22 +265,33 @@ export const FormFillModal: React.FC = () => {
           )}
 
           {/* Editable Field Groups */}
-          <div className="space-y-3">
-            {Object.entries(fields).map(([key, val]) => (
-              <div key={key}>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                  {key.replace(/([A-Z])/g, ' $1').trim()}
-                </label>
-                <input
-                  type="text"
-                  value={val}
-                  onChange={(e) => handleFieldChange(key, e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition disabled:opacity-50"
-                />
+          {Object.keys(fields).length > 0 ? (
+            <div className="space-y-3">
+              {Object.entries(fields).map(([key, val]) => (
+                <div key={key}>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    {key.replace(/([A-Z])/g, ' $1').trim()}
+                  </label>
+                  <input
+                    type="text"
+                    value={val}
+                    onChange={(e) => handleFieldChange(key, e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition disabled:opacity-50"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            !isLoadingFields && (
+              <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 text-xs text-slate-300 flex flex-col gap-1.5">
+                <span className="font-semibold text-white">Public Form Linked</span>
+                <p className="text-slate-400 text-[11px]">
+                  Couldn&apos;t read this form&apos;s fields automatically. You can review or complete it manually using the target link above.
+                </p>
               </div>
-            ))}
-          </div>
+            )
+          )}
 
           {/* Guardrail Note */}
           <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/20 text-[11px] text-indigo-300">

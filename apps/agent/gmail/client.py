@@ -226,6 +226,23 @@ class GmailClient:
                 has_form = True
                 form_type = "pdf"
 
+            # Extract attachments metadata
+            attachments = []
+            def _extract_attachments(payload_part):
+                fn = payload_part.get("filename")
+                att_id = payload_part.get("body", {}).get("attachmentId")
+                if fn and att_id:
+                    attachments.append({
+                        "filename": fn,
+                        "attachment_id": att_id,
+                        "mime_type": payload_part.get("mimeType", ""),
+                        "size": payload_part.get("body", {}).get("size", 0)
+                    })
+                for sub_part in payload_part.get("parts", []):
+                    _extract_attachments(sub_part)
+
+            _extract_attachments(msg.get("payload", {}))
+
             parsed_msg = {
                 "id": msg.get("id"),
                 "thread_id": msg.get("threadId"),
@@ -242,6 +259,7 @@ class GmailClient:
                 "has_form": has_form,
                 "form_url": form_url,
                 "form_type": form_type,
+                "attachments": attachments,
             }
 
             if len(_message_cache) > 500:
@@ -252,6 +270,18 @@ class GmailClient:
         except HttpError as error:
             print(f"Gmail API error in get_message: {error}")
             raise error
+
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        """Fetch raw attachment bytes from Gmail API."""
+        if not self.service:
+            raise ValueError("Gmail client not initialized with valid credentials")
+        res = self._exec_with_retry(lambda: self.service.users().messages().attachments().get(
+            userId="me", messageId=message_id, id=attachment_id
+        ).execute())
+        data = res.get("data", "")
+        if not data:
+            return b""
+        return base64.urlsafe_b64decode(data.encode("ASCII"))
 
     def _parse_body(self, payload: Dict[str, Any]) -> tuple[str, str]:
         """Extract text and HTML content from email payload parts."""

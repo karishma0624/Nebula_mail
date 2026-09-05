@@ -145,9 +145,10 @@ export const useMailStore = create<MailState>((set, get) => ({
   setView: (view) => {
     const current = get().currentView;
     if (view !== 'detail' && view !== current) {
-      // Reset pagination and active filters when switching primary view folders (Inbox <-> Sent)
+      // Reset pagination, openEmail, and active filters when switching primary view folders (Inbox <-> Sent)
       set({ 
         currentView: view,
+        openEmail: null,
         activeFilters: {},
         currentPage: 1,
         nextPageToken: null,
@@ -156,6 +157,8 @@ export const useMailStore = create<MailState>((set, get) => ({
         searchQueryDescription: null,
         searchResultEstimate: null
       });
+    } else if (view !== 'detail') {
+      set({ currentView: view, openEmail: null });
     } else {
       set({ currentView: view });
     }
@@ -166,6 +169,7 @@ export const useMailStore = create<MailState>((set, get) => ({
     openEmail: email,
     currentView: email ? 'detail' : 'inbox' 
   }),
+
 
   setEmails: (emails) => {
     set({ emails });
@@ -258,7 +262,8 @@ export const useMailStore = create<MailState>((set, get) => ({
       currentPage: 1,
       nextPageToken: nextToken,
       pageTokenHistory: [null],
-      currentView: 'inbox'
+      currentView: 'inbox',
+      openEmail: null
     });
   },
 
@@ -269,9 +274,11 @@ export const useMailStore = create<MailState>((set, get) => ({
       searchResultEstimate: null,
       currentPage: 1,
       nextPageToken: null,
-      pageTokenHistory: [null]
+      pageTokenHistory: [null],
+      openEmail: null
     });
   },
+
 
   applyLocalFilters: () => {
     const { emails, activeFilters, currentView, isSearchActive } = get();

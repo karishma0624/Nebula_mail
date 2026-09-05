@@ -223,6 +223,7 @@ def fill_form(args: FillFormInput) -> Dict[str, Any]:
     Extract form fields from email attachments or links and propose values.
     Saves session to form_fill_sessions table with status 'pending_approval'.
     CRITICAL GUARDRAIL: Never auto-submits. Requires explicit human confirmation.
+    Section 27: Never crashes with raw 500. Handles Google Forms and PDF fields gracefully.
     """
     import uuid
     client = None
@@ -231,15 +232,81 @@ def fill_form(args: FillFormInput) -> Dict[str, Any]:
     except Exception:
         pass
 
-    msg = client.get_message(args.email_id) if client else None
-    form_type = msg.get("form_type", "google_form") if msg else "google_form"
-    form_url = msg.get("form_url", "") if msg else ""
+    msg = None
+    form_type = "google_form"
+    form_url = ""
 
-    fields = [
-        {"name": "full_name", "label": "Full Name", "value": args.field_values.get("full_name", ""), "type": "text"},
-        {"name": "email", "label": "Email Address", "value": args.field_values.get("email", ""), "type": "email"},
-        {"name": "comments", "label": "Feedback / Comments", "value": args.field_values.get("comments", ""), "type": "text"}
-    ]
+    try:
+        if client and args.email_id:
+            msg = client.get_message(args.email_id)
+            if msg:
+                form_type = msg.get("form_type", "google_form")
+                form_url = msg.get("form_url", "")
+    except Exception as e:
+        print(f"[fill_form] Notice fetching message from Gmail: {e}")
+
+    # Fallback to Supabase if form_url is empty
+    if not form_url:
+        try:
+            sup = get_supabase()
+            if sup:
+                if args.email_id:
+                    row = sup.table("emails").select("*").eq("id", args.email_id).execute()
+                    if row.data and len(row.data) > 0:
+                        em = row.data[0]
+                        form_url = em.get("form_url") or ""
+                        if not form_url:
+                            import re
+                            content = f"{em.get('snippet', '')} {em.get('body_plain', '')} {em.get('body_html', '')}"
+                            m = re.search(r"(https?://(?:docs\.google\.com/forms/[^\s\"'<>]+|forms\.gle/[^\s\"'<>]+|forms\.office\.com/[^\s\"'<>]+))", content, re.IGNORECASE)
+                            if m:
+                                form_url = m.group(1)
+
+                if not form_url:
+                    recent = sup.table("emails").select("*").or_("has_form.eq.true,form_url.neq.null").order("received_at", desc=True).limit(5).execute()
+                    for em in (recent.data or []):
+                        if em.get("form_url"):
+                            form_url = em["form_url"]
+                            break
+                        import re
+                        content = f"{em.get('snippet', '')} {em.get('body_plain', '')} {em.get('body_html', '')}"
+                        m = re.search(r"(https?://(?:docs\.google\.com/forms/[^\s\"'<>]+|forms\.gle/[^\s\"'<>]+|forms\.office\.com/[^\s\"'<>]+))", content, re.IGNORECASE)
+                        if m:
+                            form_url = m.group(1)
+                            break
+        except Exception as e:
+            print(f"[fill_form] Notice fetching from Supabase: {e}")
+
+    # Dynamic Google Form field extraction
+    fields = []
+    if form_url and ("forms.gle" in form_url or "docs.google.com/forms" in form_url):
+        try:
+            from routers.emails import parse_google_form
+            parsed = parse_google_form(form_url)
+            for f in parsed.get("fields", []):
+                val = ""
+                lbl_lower = f["label"].lower()
+                if "name" in lbl_lower:
+                    val = args.field_values.get("name") or args.field_values.get("full_name") or "Karishma"
+                elif "email" in lbl_lower:
+                    val = args.field_values.get("email") or "karish1234coding@gmail.com"
+                elif "phone" in lbl_lower or "mobile" in lbl_lower:
+                    val = args.field_values.get("phone") or ""
+                else:
+                    val = args.field_values.get(f["name"]) or ""
+                fields.append({
+                    "name": f["name"],
+                    "label": f["label"],
+                    "value": val,
+                    "type": f.get("type", "text"),
+                    "entry_id": f.get("entry_id")
+                })
+        except Exception as e:
+            print(f"[fill_form] Error extracting dynamic fields: {e}")
+
+    # Section 32: Do NOT fabricate fake fields if real extraction is not available.
+    # fields remains empty if extraction failed.
+
 
     session_id = str(uuid.uuid4())
     supabase = get_supabase()
@@ -248,11 +315,21 @@ def fill_form(args: FillFormInput) -> Dict[str, Any]:
             from db.supabase_client import get_current_user_id
             uid = get_current_user_id()
             if uid:
+                valid_eid = None
+                if args.email_id:
+                    try:
+                        chk = supabase.table("emails").select("id").eq("id", args.email_id).execute()
+                        if chk.data and len(chk.data) > 0:
+                            valid_eid = args.email_id
+                    except Exception:
+                        pass
+
+                safe_ft = form_type if form_type in ['pdf', 'google_form', 'ms_form', 'other'] else 'other'
                 supabase.table("form_fill_sessions").insert({
                     "id": session_id,
                     "user_id": uid,
-                    "email_id": args.email_id,
-                    "form_type": form_type if form_type in ['pdf', 'google_form', 'ms_form', 'other'] else 'other',
+                    "email_id": valid_eid,
+                    "form_type": safe_ft,
                     "fields": fields,
                     "status": "pending_approval"
                 }).execute()
@@ -270,3 +347,4 @@ def fill_form(args: FillFormInput) -> Dict[str, Any]:
     }
     log_tool_audit("fill_form", args.model_dump(), res, "pending_approval")
     return res
+

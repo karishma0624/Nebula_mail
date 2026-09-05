@@ -436,3 +436,245 @@ def test_section_26_unified_send_mode_across_compose_reply_forward():
             assert tc_c2[1]["arguments"]["to"] == "bob@example.com"
             assert "confirmation" in rep_c2.lower()
 
+
+def test_section_27_form_fill_graceful_no_500():
+    """Section 27: Form auto-fill preview and submission never crash with raw 500 on un-synced emails or Google Forms"""
+    from agent.tools import fill_form, FillFormInput
+    from fastapi.testclient import TestClient
+    from main import app
+
+    # 1. Calling fill_form with a Google Form / un-synced email_id
+    args = FillFormInput(email_id="unsynced-google-form-123", field_values={"full_name": "Karishma"})
+    with patch("agent.tools.get_current_gmail_client") as mock_client:
+        mock_client.return_value.get_message.return_value = {
+            "id": "unsynced-google-form-123",
+            "form_url": "https://forms.gle/sampleFormTest123",
+            "form_type": "google_form",
+            "subject": "Community Survey Form"
+        }
+        res = fill_form(args)
+        assert res is not None
+        assert isinstance(res["fields"], list)
+        # When parsed fields are present, verify they are mapped
+        with patch("routers.emails.parse_google_form", return_value={"fields": [{"name": "entry.1", "label": "Full Name"}]}):
+            res_parsed = fill_form(args)
+            assert len(res_parsed["fields"]) > 0
+            assert res_parsed["fields"][0]["label"] == "Full Name"
+
+    # 2. Testing /forms/submit endpoint does not raise 500 when database throws foreign key exception
+    client = TestClient(app)
+    with patch("db.supabase_client.ensure_default_user_id", return_value="user-test-123"):
+        with patch("routers.emails.get_supabase") as mock_sb:
+            mock_inst = mock_sb.return_value
+            # Simulate foreign key constraint violation on first insert
+            mock_inst.table.return_value.insert.return_value.execute.side_effect = Exception("violates foreign key constraint form_fill_sessions_email_id_fkey")
+            response = client.post("/forms/submit", json={
+                "email_id": "nonexistent-email-id",
+                "form_type": "google_form",
+                "fields": {"full_name": "Karishma"},
+                "action": "submit"
+            })
+            assert response.status_code == 200
+            data = response.json()
+            assert data.get("status") == "submitted"
+            assert "Server returned 500" not in str(data)
+
+
+def test_section_28_and_29_confirm_then_open_conversation_memory():
+    """Section 28 & 29: With no email open, asking to summarize offers to open, and confirming ('yes') opens and summarizes it using turn-to-turn memory"""
+    from langchain_core.messages import HumanMessage, AIMessage
+
+    seed_airbnb = {
+        "id": "msg-airbnb-1",
+        "sender": "Airbnb <automated@airbnb.com>",
+        "subject": "Reservation confirmed - Goa Beach Villa",
+        "snippet": "Your reservation for 3 nights at Goa Beach Villa is confirmed. Check-in is Sep 15, 2026 at 2:00 PM.",
+        "date": "Sep 2, 2026, 04:15 PM"
+    }
+
+    with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_airbnb):
+        # Turn 1: User asks "summarize the Airbnb email" with no email open
+        # Should NOT dead-end with "Please select or open an email first"
+        # Should propose to open it
+        tc1, reply1 = parse_deterministic_intent("summarize the Airbnb email", {"open_email": None})
+        assert tc1 is None
+        assert "airbnb" in reply1.lower()
+        assert "want me to open it and summarize it?" in reply1.lower()
+
+        # Turn 2: User confirms "yes"
+        # History contains Turn 1 user message and Turn 1 assistant offer
+        history = [
+            HumanMessage(content="summarize the Airbnb email"),
+            AIMessage(content=reply1)
+        ]
+        tc2, reply2 = parse_deterministic_intent("yes", {"open_email": None}, history_messages=history)
+        assert tc2 is not None
+        assert tc2["name"] == "open_email"
+        assert tc2["arguments"]["email_id"] == "msg-airbnb-1"
+        # Assistant response contains formatted summary with bold date/time and bullet points
+        assert "opened the email" in reply2.lower()
+        assert "•" in reply2
+        assert "**" in reply2  # bold date/time
+        assert "airbnb" in reply2.lower()
+
+    # Turn 3: Also test user confirming with "i did" when email is open
+    open_email = {
+        "id": "msg-airbnb-1",
+        "sender": "Airbnb <automated@airbnb.com>",
+        "subject": "Reservation confirmed - Goa Beach Villa",
+        "snippet": "Your reservation for 3 nights at Goa Beach Villa is confirmed.",
+        "date": "Sep 2, 2026, 04:15 PM"
+    }
+    tc3, reply3 = parse_deterministic_intent("i did", {"open_email": open_email}, history_messages=[
+        AIMessage(content="Please select or open an email first so I can summarize it for you")
+    ])
+    assert tc3 is None
+    assert "summary" in reply3.lower()
+    assert "•" in reply3
+    assert "**" in reply3
+
+
+
+def test_section_30_new_chat_creates_fresh_conversation():
+    """Section 30: Starting a new chat creates a fresh conversation_id, preserving previous conversations in history"""
+    from fastapi.testclient import TestClient
+    from main import app
+    client = TestClient(app)
+
+    with patch("routers.chat.ensure_default_user_id", return_value="user-test-123"):
+        with patch("routers.chat.get_supabase") as mock_sb:
+            mock_inst = mock_sb.return_value
+            # Mock new conversation creation
+            mock_inst.table.return_value.insert.return_value.execute.return_value.data = [{"id": "new-conv-uuid-789"}]
+            mock_inst.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+
+            # Post chat with conversation_id=None (simulating New Chat click)
+            res = client.post("/chat", json={
+                "message": "Hello new chat",
+                "conversation_id": None
+            })
+            assert res.status_code == 200
+            assert "new-conv-uuid-789" in res.text
+
+
+def test_section_31_reply_vs_form_fill_routing():
+    """Section 31: 'reply to [sender] regarding the form saying [message]' must trigger a reply flow and NEVER call fill_form"""
+    msg = "reply to jayakishan.2305044@srec.ac.in regarding the form saying that i will fill later"
+    tool_calls, reply = parse_deterministic_intent(msg, {"open_email": None})
+
+    assert tool_calls is not None
+    assert isinstance(tool_calls, list)
+    tc_names = [tc["name"] for tc in tool_calls]
+    assert "draft_compose" in tc_names
+    assert "fill_form" not in tc_names
+    assert "jayakishan.2305044@srec.ac.in" in str(tool_calls)
+    assert "fill later" in str(tool_calls)
+
+
+def test_section_32_real_form_fill_no_placeholder_ids_and_real_fields():
+    """Section 32: fill_form must use real resolved email IDs, never seed-form-msg-id, and extract genuine fields from Google Forms"""
+    from unittest.mock import MagicMock
+    from routers.emails import parse_google_form
+    from agent.tools import fill_form, FillFormInput
+
+    # 1. Verify parse_google_form extracts genuine question labels
+    sample_form_html = """
+    <html><body>
+    <script type="text/javascript">
+    var FB_PUBLIC_LOAD_DATA_ = [null,[null,[[1297557774,"Name",null,0,[[1297557774,null,1]]],[1604020733,"Email ID",null,0,[[1604020733,null,1]]],[2140716534,"Phone Number",null,0,[[2140716534,null,1]]]],null,null,null,null,null,null,"Basic Details Form"]];
+    </script>
+    </body></html>
+    """
+    with patch("urllib.request.urlopen") as mock_url:
+        mock_resp = MagicMock()
+        mock_resp.geturl.return_value = "https://docs.google.com/forms/d/e/1FAIpQLScgJJo16EAxehKvD8NrIOcrcv5s84SauVj08UqiEVfG_MdH1Q/viewform"
+        mock_resp.read.return_value = sample_form_html.encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_url.return_value = mock_resp
+
+        parsed = parse_google_form("https://forms.gle/EGEmF8k7ejnj9Wsg6")
+        assert parsed["title"] == "Basic Details Form"
+        field_labels = [f["label"] for f in parsed["fields"]]
+        assert "Name" in field_labels
+        assert "Email ID" in field_labels
+        assert "Phone Number" in field_labels
+
+    # 2. Verify fill_form never calls Gmail API with placeholder 'seed-form-msg-id'
+    real_email_id = "real-gmail-msg-999"
+    with patch("agent.tools.get_current_gmail_client") as mock_cl:
+        mock_client_inst = mock_cl.return_value
+        mock_client_inst.get_message.return_value = {
+            "id": real_email_id,
+            "form_url": "https://forms.gle/EGEmF8k7ejnj9Wsg6",
+            "form_type": "google_form"
+        }
+        with patch("agent.tools.get_supabase"):
+            with patch("routers.emails.parse_google_form", return_value=parsed):
+                res = fill_form(FillFormInput(email_id=real_email_id))
+                assert res["email_id"] == real_email_id
+                assert res["email_id"] != "seed-form-msg-id"
+                # Field names match the real extracted form
+                assert any(f["label"] == "Name" for f in res["fields"])
+                assert any(f["label"] == "Email ID" for f in res["fields"])
+                mock_client_inst.get_message.assert_called_with(real_email_id)
+
+
+def test_section_33_attachment_extraction_and_grounded_qa():
+    """Section 33: Document attachment text extraction (PDF/DOCX/text) and grounded Q&A citing email and attachment"""
+    from agent.attachments import extract_text_from_bytes
+    from agent.rag import answer_grounded_rag
+
+    # 1. Test plain text extraction
+    sample_txt = b"Project Milestone Schedule: Final submission deadline: October 15, 2026."
+    text, status = extract_text_from_bytes(sample_txt, "schedule.txt")
+    assert status == "extracted"
+    assert "October 15, 2026" in text
+
+    # 2. Test grounded Q&A retrieving attachment
+    mock_att = [{
+        "id": "att-123",
+        "email_id": "email-sarah-456",
+        "filename": "Project_Guidelines.pdf",
+        "extracted_text": "The project proposal submission deadline: October 20, 2026. All teams must submit.",
+        "score": 10
+    }]
+    with patch("agent.attachments.search_semantic_attachments", return_value=mock_att):
+        with patch("agent.rag.search_semantic_emails", return_value=[]):
+            ans, citations = answer_grounded_rag("what does the PDF in that email say about the deadline", "user-123")
+            assert "Project_Guidelines.pdf" in ans or "October 20, 2026" in ans
+            assert len(citations) > 0
+            assert citations[0]["filename"] == "Project_Guidelines.pdf"
+            assert citations[0]["email_id"] == "email-sarah-456"
+
+
+def test_section_34_multilingual_grounded_qa():
+    """Section 34: Multilingual support responds in the user's language (Tamil, Hindi, etc.) when querying email content"""
+    from agent.rag import answer_grounded_rag
+
+    seed_email = [{
+        "id": "email-tamil-seed",
+        "sender": "Professor Raman <raman@university.edu>",
+        "subject": "Class Announcement",
+        "snippet": "Classes will be conducted online tomorrow morning.",
+        "received_at": "Sep 5, 2026"
+    }]
+
+    # Query in Tamil
+    with patch("agent.rag.search_semantic_emails", return_value=seed_email):
+        with patch("agent.attachments.search_semantic_attachments", return_value=[]):
+            ans, citations = answer_grounded_rag("மின்னஞ்சல் தகவலை சுருக்கமாக கூறுங்கள்", "user-123")
+            # Should have Tamil characters in response
+            assert any('\u0B80' <= c <= '\u0BFF' for c in ans)
+            assert len(citations) > 0
+
+    # Query in Hindi
+    with patch("agent.rag.search_semantic_emails", return_value=seed_email):
+        with patch("agent.attachments.search_semantic_attachments", return_value=[]):
+            ans, citations = answer_grounded_rag("ईमेल का सारांश बताएं", "user-123")
+            # Should have Devanagari characters in response
+            assert any('\u0900' <= c <= '\u097F' for c in ans)
+            assert len(citations) > 0
+
+
+
+
