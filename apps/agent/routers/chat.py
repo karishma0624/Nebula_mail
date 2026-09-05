@@ -90,7 +90,7 @@ async def chat_endpoint(req: ChatRequest):
                 "retry_count": 0,
                 "error": None,
                 "final_response": None,
-                "citations": None
+                "citations": []
             }
 
             # 5. Run graph asynchronously or through a thread pool
@@ -113,7 +113,7 @@ async def chat_endpoint(req: ChatRequest):
                 await asyncio.sleep(0.05)
 
             # 7. Stream citations if present
-            citations = final_state.get("citations")
+            citations = final_state.get("citations") or []
             if citations:
                 yield {
                     "event": "citations",
@@ -157,10 +157,17 @@ async def chat_endpoint(req: ChatRequest):
                     print(f"Error persisting assistant message: {db_err}")
 
         except Exception as e:
-            print(f"Error in chat SSE streaming: {e}")
+            import traceback
+            traceback.print_exc()
+            from gmail.client import GmailNetworkError
+            msg = "Couldn't reach Gmail. Check your internet connection and try again." if (isinstance(e, GmailNetworkError) or "ServerNotFoundError" in str(e) or "gmail" in str(e).lower()) else "Something went wrong, please try again."
             yield {
-                "event": "error",
-                "data": json.dumps({"error": str(e)})
+                "event": "message",
+                "data": json.dumps({"delta": msg})
+            }
+            yield {
+                "event": "message",
+                "data": "[DONE]"
             }
 
     return EventSourceResponse(event_generator())
@@ -255,3 +262,45 @@ def submit_feedback(req: FeedbackRequest):
         "message": feedback_text
     }).execute()
     return {"status": "success", "message": "Feedback submitted"}
+
+
+class EditMessageRequest(BaseModel):
+    message_id: str
+    new_content: str
+
+@router.post("/conversations/{conversation_id}/edit-message")
+def edit_conversation_message(conversation_id: str, req: EditMessageRequest):
+    """
+    Section 24: Edit a user message in a conversation.
+    Replaces that message's stored content and discards/deletes all subsequent messages,
+    so re-running produces a fresh continuation without duplicates.
+    """
+    user_id = ensure_default_user_id()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    # Verify conversation ownership
+    conv_res = supabase.table("conversations").select("id").eq("id", conversation_id).eq("user_id", user_id).execute()
+    if not conv_res.data:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Find target message
+    msg_res = supabase.table("messages").select("*").eq("id", req.message_id).eq("conversation_id", conversation_id).eq("user_id", user_id).execute()
+    if not msg_res.data:
+        # If ID is temporary client-side uuid or not yet in DB, we still allow truncation based on latest
+        return {"status": "success", "message_id": req.message_id, "new_content": req.new_content}
+
+    target_msg = msg_res.data[0]
+    created_at = target_msg.get("created_at")
+
+    # Delete all subsequent messages in this conversation
+    if created_at:
+        supabase.table("messages").delete().eq("conversation_id", conversation_id).eq("user_id", user_id).gt("created_at", created_at).execute()
+
+    # Update target message content
+    supabase.table("messages").update({"content": req.new_content}).eq("id", req.message_id).execute()
+
+    return {"status": "success", "message_id": req.message_id, "new_content": req.new_content}

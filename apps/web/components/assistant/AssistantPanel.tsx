@@ -18,6 +18,8 @@ import { streamChatAssistant } from '../../lib/sse';
 import { executeAssistantToolCall } from './ToolCallExecutor';
 import { CopilotDrawer } from './CopilotDrawer';
 
+const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+
 export const AssistantPanel: React.FC = () => {
   const { 
     isAssistantOpen, 
@@ -198,6 +200,42 @@ export const AssistantPanel: React.FC = () => {
     });
   };
 
+  const handleEditMessage = async (messageId: string, newContent: string) => {
+    if (isStreaming) return;
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+
+    // Truncate messages in local state: remove this message and anything after it
+    const priorMessages = messages.slice(0, idx);
+    setMessages(priorMessages);
+
+    // Call backend endpoint to truncate and update message in Supabase
+    if (activeConversationId) {
+      try {
+        await fetch(`${AGENT_API_URL}/conversations/${activeConversationId}/edit-message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message_id: messageId,
+            new_content: newContent,
+          }),
+        });
+      } catch (e) {
+        console.warn('Notice updating message on server:', e);
+      }
+    }
+
+    // Re-run the conversation from the edited prompt
+    handleSendMessage(newContent);
+  };
+
+  const contextualSuggestions = [
+    "Show me my unread emails",
+    "is AWS invoice available",
+    "Which Supabase project is paused?",
+    "mails from supabase"
+  ];
+
   if (!isAssistantOpen) return null;
 
   return (
@@ -251,7 +289,7 @@ export const AssistantPanel: React.FC = () => {
       {/* Chat Messages */}
       <div className="flex-1 p-4 overflow-y-auto space-y-2.5">
         {messages.map((m) => (
-          <ChatMessage key={m.id} message={m} />
+          <ChatMessage key={m.id} message={m} onEdit={handleEditMessage} />
         ))}
         {isStreaming && (
           <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-indigo-400 p-2">
@@ -262,22 +300,37 @@ export const AssistantPanel: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Contextual Suggestions Chips (Image 2 style) */}
+      <div className="px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-slate-200/80 dark:border-slate-800/60 bg-slate-50/80 dark:bg-slate-950/50">
+        {contextualSuggestions.map((s, idx) => (
+          <button
+            key={idx}
+            onClick={() => handleSendMessage(s)}
+            disabled={isStreaming}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-medium whitespace-nowrap transition shadow-xs disabled:opacity-50"
+          >
+            <span className="text-slate-400">↳</span>
+            <span>{s}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Quick Test Prompt Chips */}
-      <div className="p-3 border-t border-slate-200 dark:border-slate-800/60 bg-slate-50/60 dark:bg-slate-950/40">
-        <div className="flex items-center gap-1 mb-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+      <div className="p-2.5 border-t border-slate-200 dark:border-slate-800/60 bg-slate-50/40 dark:bg-slate-950/30">
+        <div className="flex items-center gap-1 mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
           <Flame size={11} className="text-amber-500" />
           <span>Evaluator Test Prompts</span>
         </div>
-        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+        <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
           {quickTestPrompts.map((prompt, idx) => (
             <button
               key={idx}
               onClick={() => handleSendMessage(prompt)}
               disabled={isStreaming}
-              className="text-[11px] bg-white dark:bg-slate-800/80 hover:bg-blue-50 dark:hover:bg-indigo-600/30 text-slate-700 dark:text-slate-300 hover:text-blue-700 dark:hover:text-indigo-200 border border-slate-200 dark:border-slate-700/80 hover:border-blue-300 dark:hover:border-indigo-500/40 rounded-lg px-2.5 py-1 text-left truncate max-w-full transition disabled:opacity-40 shadow-sm"
+              className="text-[10.5px] bg-white dark:bg-slate-800/80 hover:bg-blue-50 dark:hover:bg-indigo-600/30 text-slate-700 dark:text-slate-300 hover:text-blue-700 dark:hover:text-indigo-200 border border-slate-200 dark:border-slate-700/80 hover:border-blue-300 dark:hover:border-indigo-500/40 rounded-lg px-2 py-0.5 text-left truncate max-w-full transition disabled:opacity-40 shadow-xs"
               title={prompt}
             >
-              &quot;{prompt.slice(0, 32)}...&quot;
+              &quot;{prompt.slice(0, 30)}...&quot;
             </button>
           ))}
         </div>

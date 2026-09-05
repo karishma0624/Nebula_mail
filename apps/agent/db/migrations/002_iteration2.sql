@@ -180,6 +180,27 @@ BEGIN
 END
 $$;
 
+-- 10. Per-user send-mode preference (Section 23)
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS send_mode text NOT NULL DEFAULT 'confirm'
+  CHECK (send_mode IN ('confirm', 'automatic'));
+
+-- 11. Allow 'auto_executed' in agent_tool_calls status constraint
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'agent_tool_calls_status_check'
+  ) THEN
+    ALTER TABLE public.agent_tool_calls
+      DROP CONSTRAINT agent_tool_calls_status_check;
+    ALTER TABLE public.agent_tool_calls
+      ADD CONSTRAINT agent_tool_calls_status_check
+      CHECK (status IN ('pending_approval', 'approved', 'executed', 'failed', 'rejected', 'auto_executed'));
+  END IF;
+END
+$$;
+
 -- ============================================================
 -- Notes:
 -- - emails.embedding (pgvector) already exists from the original schema
@@ -190,3 +211,4 @@ $$;
 --   == conversation.user_id (join through `conversations`) before
 --   reading/writing conversation history — don't rely on RLS alone here.
 -- ============================================================
+

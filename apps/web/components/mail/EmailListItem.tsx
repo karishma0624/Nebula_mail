@@ -4,43 +4,13 @@ import React, { useState } from 'react';
 import { Email } from '../../lib/types';
 import { useMailStore } from '../../lib/store';
 import { Star } from 'lucide-react';
+import { HighlightedText } from '../ui/HighlightedText';
 
 interface EmailListItemProps {
   email: Email;
   isSelectedItem?: boolean;
   onToggleSelect?: (id: string) => void;
 }
-
-// Search keyword highlight component (matches Gmail yellow highlight)
-const HighlightText: React.FC<{ text: string; terms: string[] }> = ({ text, terms }) => {
-  if (!text || !terms || terms.length === 0) return <>{text}</>;
-  const validTerms = Array.from(new Set(
-    terms
-      .map(t => t.trim().replace(/^from:/i, '').replace(/^to:/i, '').replace(/^subject:/i, ''))
-      .filter(t => t.length >= 2)
-  )).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-
-  if (validTerms.length === 0) return <>{text}</>;
-  const regex = new RegExp(`(${validTerms.join('|')})`, 'gi');
-  const parts = text.split(regex);
-
-  return (
-    <>
-      {parts.map((part, i) =>
-        regex.test(part) ? (
-          <mark
-            key={i}
-            className="bg-[#ffdf70] dark:bg-amber-400/35 text-slate-900 dark:text-amber-100 rounded-[2px] px-0.5 font-medium transition-colors"
-          >
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </>
-  );
-};
 
 export const EmailListItem: React.FC<EmailListItemProps> = ({ 
   email, 
@@ -153,7 +123,7 @@ export const EmailListItem: React.FC<EmailListItemProps> = ({
               : 'font-normal text-slate-700 dark:text-slate-300'
           }`}
         >
-          <HighlightText text={senderName} terms={highlightTerms} />
+          <HighlightedText text={senderName} terms={highlightTerms} />
         </span>
       </div>
 
@@ -171,11 +141,11 @@ export const EmailListItem: React.FC<EmailListItemProps> = ({
               : 'font-normal text-slate-700 dark:text-slate-300'
           }`}
         >
-          <HighlightText text={email.subject || '(No Subject)'} terms={highlightTerms} />
+          <HighlightedText text={email.subject || '(No Subject)'} terms={highlightTerms} />
         </span>
         <span className="text-slate-400 dark:text-slate-600 shrink-0 select-none">-</span>
         <span className="text-slate-500 dark:text-slate-400 text-xs truncate flex-1">
-          <HighlightText text={email.snippet || ''} terms={highlightTerms} />
+          <HighlightedText text={email.snippet || ''} terms={highlightTerms} />
         </span>
       </div>
 

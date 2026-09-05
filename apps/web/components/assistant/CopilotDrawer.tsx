@@ -56,8 +56,9 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   // Settings State
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [autoReadAloud, setAutoReadAloud] = useState(false);
+  const [sendMode, setSendMode] = useState<'confirm' | 'automatic'>('confirm');
 
   // Feedback State
   const [feedbackRating, setFeedbackRating] = useState<'positive' | 'negative' | null>(null);
@@ -67,12 +68,39 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedTheme = (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
-      setTheme(storedTheme);
+      const updateTheme = () => {
+        const storedTheme = (document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+        setTheme(storedTheme);
+      };
+      updateTheme();
+      window.addEventListener('themechange', updateTheme);
       const storedVoice = localStorage.getItem('nebula_voice_autoread') === 'true';
       setAutoReadAloud(storedVoice);
+
+      // Load user send_mode preference
+      fetch(`${AGENT_API_URL}/user/settings`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.send_mode) setSendMode(data.send_mode);
+        })
+        .catch(() => {});
+
+      return () => window.removeEventListener('themechange', updateTheme);
     }
   }, []);
+
+  const handleSendModeChange = async (mode: 'confirm' | 'automatic') => {
+    setSendMode(mode);
+    try {
+      await fetch(`${AGENT_API_URL}/user/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ send_mode: mode }),
+      });
+    } catch (e) {
+      console.error('Failed to update send_mode:', e);
+    }
+  };
 
   const loadConversations = async () => {
     setIsLoadingHistory(true);
@@ -101,7 +129,13 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(nextTheme);
     document.documentElement.setAttribute('data-theme', nextTheme);
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     localStorage.setItem('theme', nextTheme);
+    window.dispatchEvent(new Event('themechange'));
   };
 
   const handleToggleVoice = () => {
@@ -355,24 +389,61 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           {/* TAB 3: SETTINGS */}
           {activeTab === 'settings' && (
             <div className="space-y-4">
-              {/* Theme toggle row */}
-              <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between">
+              {/* Send Mode Setting (Section 23) */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2.5">
                 <div>
-                  <h4 className="text-xs font-semibold text-white">App Theme</h4>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Switch between Dark and Light mode</p>
+                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Email Send Mode</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Control confirmation step before transmitting messages</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSendModeChange('confirm')}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
+                      sendMode === 'confirm'
+                        ? 'bg-blue-50 dark:bg-indigo-600/30 border-blue-500 dark:border-indigo-500 text-blue-700 dark:text-indigo-300 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                    }`}
+                  >
+                    Confirm before sending (Default)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendModeChange('automatic')}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
+                      sendMode === 'automatic'
+                        ? 'bg-amber-50 dark:bg-amber-500/20 border-amber-500 text-amber-800 dark:text-amber-300 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                    }`}
+                  >
+                    Send automatically
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 italic leading-snug">
+                  {sendMode === 'automatic' 
+                    ? "Skips the confirmation step. Not recommended if this app is being evaluated against a human-in-the-loop requirement."
+                    : "Always presents a one-click confirmation modal showing exact recipient, subject, and body before sending."}
+                </p>
+              </div>
+
+              {/* Theme toggle row */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">App Theme</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Switch between Dark and Light mode</p>
                 </div>
                 <button
                   onClick={handleToggleTheme}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-slate-200 transition"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition shadow-sm"
                 >
                   {theme === 'dark' ? (
                     <>
-                      <Sun size={13} className="text-amber-400" />
+                      <Sun size={13} className="text-amber-500" />
                       <span>Light</span>
                     </>
                   ) : (
                     <>
-                      <Moon size={13} className="text-indigo-400" />
+                      <Moon size={13} className="text-indigo-500" />
                       <span>Dark</span>
                     </>
                   )}
@@ -380,17 +451,17 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
               </div>
 
               {/* Voice auto-read row */}
-              <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between">
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-white">Speech Read-Aloud</h4>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Automatically speak assistant answers</p>
+                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Speech Read-Aloud</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Automatically speak assistant answers</p>
                 </div>
                 <button
                   onClick={handleToggleVoice}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                     autoReadAloud
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'bg-slate-700 text-slate-300'
+                      ? 'bg-blue-600 dark:bg-indigo-600 text-white shadow-md'
+                      : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   {autoReadAloud ? (

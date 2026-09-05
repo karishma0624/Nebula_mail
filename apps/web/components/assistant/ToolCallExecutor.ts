@@ -174,23 +174,18 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
     }
 
     case 'prepare_send': {
-      const currentDraft = store.composeDraft;
-      const draft_id = args.draft_id || currentDraft.draft_id || ('draft-' + Date.now());
-      const to = args.to || currentDraft.to || '';
-      const subject = args.subject || currentDraft.subject || '';
-      const body = args.body || currentDraft.body || '';
-      const thread_id = args.thread_id || currentDraft.thread_id;
+      // Strictly use literal payload from args to prevent stale/resurrected fields
+      const draft_id = args.draft_id || ('draft-' + Date.now());
+      const to = args.to !== undefined ? args.to : '';
+      const subject = args.subject !== undefined ? args.subject : '';
+      const body = args.body !== undefined ? args.body : '';
+      const thread_id = args.thread_id || undefined;
+
+      const freshDraft = { draft_id, to, subject, body, thread_id };
 
       // Update composeDraft directly to guarantee zero drift
-      store.setComposeDraft({ draft_id, to, subject, body, thread_id });
-
-      store.openConfirmModal({
-        draft_id,
-        to,
-        subject,
-        body,
-        thread_id,
-      });
+      store.setComposeDraft(freshDraft);
+      store.openConfirmModal(freshDraft);
       break;
     }
 

@@ -13,15 +13,26 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
-    const active = document.documentElement.getAttribute('data-theme') as 'light' | 'dark';
-    if (active) setTheme(active);
+    const updateTheme = () => {
+      const active = (document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || 'light';
+      setTheme(active);
+    };
+    updateTheme();
+    window.addEventListener('themechange', updateTheme);
+    return () => window.removeEventListener('themechange', updateTheme);
   }, []);
 
   const handleToggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', nextTheme);
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     localStorage.setItem('theme', nextTheme);
     setTheme(nextTheme);
+    window.dispatchEvent(new Event('themechange'));
   };
   const { 
     currentView, 

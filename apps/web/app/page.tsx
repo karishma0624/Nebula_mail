@@ -16,6 +16,7 @@ import { ConfirmSendModal } from '../components/assistant/ConfirmSendModal';
 const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
 
 export default function MailApp() {
+  const [networkError, setNetworkError] = React.useState<string | null>(null);
   const { 
     isAuthenticated, 
     setAuthenticated, 
@@ -131,6 +132,7 @@ export default function MailApp() {
 
       const res = await fetch(url);
       if (res.ok) {
+        setNetworkError(null);
         const data = await res.json();
         setEmails(data.emails || []);
         setPaginationData(
@@ -139,9 +141,15 @@ export default function MailApp() {
           data.total_count, 
           data.unread_count
         );
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        if (res.status === 502 || res.status === 503 || errData?.detail?.error === 'gmail_unreachable' || errData?.error === 'gmail_unreachable') {
+          setNetworkError("Couldn't reach Gmail — check your connection");
+        }
       }
     } catch (err) {
       console.error('Failed to load Gmail messages:', err);
+      setNetworkError("Couldn't reach Gmail — check your connection");
     } finally {
       setLoadingEmails(false);
     }
@@ -221,6 +229,18 @@ export default function MailApp() {
             fetchEmails(null, 1);
           }
         }} />
+
+        {networkError && (
+          <div className="mx-6 my-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs flex items-center justify-between shadow-sm animate-in fade-in">
+            <span className="font-medium">{networkError}</span>
+            <button 
+              onClick={() => setNetworkError(null)} 
+              className="text-amber-600 dark:text-amber-400 hover:underline text-[11px] font-semibold"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Center Workspace View Handling */}
         {currentView === 'compose' ? (

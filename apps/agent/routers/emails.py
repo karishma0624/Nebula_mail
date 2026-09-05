@@ -79,6 +79,38 @@ def get_auth_status():
         "oauth_configured": bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET)
     }
 
+class UserSettingsRequest(BaseModel):
+    send_mode: str = "confirm"
+
+@router.get("/user/settings")
+def get_user_settings():
+    from db.supabase_client import get_supabase, get_current_user_id
+    uid = get_current_user_id()
+    supabase = get_supabase()
+    if supabase and uid:
+        try:
+            res = supabase.table("users").select("send_mode").eq("id", uid).limit(1).execute()
+            if res.data and len(res.data) > 0 and res.data[0].get("send_mode"):
+                return {"send_mode": res.data[0]["send_mode"]}
+        except Exception as e:
+            print(f"Error fetching user send_mode: {e}")
+    return {"send_mode": "confirm"}
+
+@router.post("/user/settings")
+def update_user_settings(req: UserSettingsRequest):
+    if req.send_mode not in ["confirm", "automatic"]:
+        raise HTTPException(status_code=400, detail="Invalid send_mode. Must be 'confirm' or 'automatic'")
+    from db.supabase_client import get_supabase, get_current_user_id
+    uid = get_current_user_id()
+    supabase = get_supabase()
+    if supabase and uid:
+        try:
+            supabase.table("users").update({"send_mode": req.send_mode}).eq("id", uid).execute()
+        except Exception as e:
+            print(f"Error updating user send_mode: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "updated", "send_mode": req.send_mode}
+
 @router.get("/auth/login-url")
 def get_login_url():
     url = get_authorization_url()
@@ -177,13 +209,20 @@ def list_emails(
 
     full_query = " ".join(query_parts)
 
-    list_res = client.list_messages(
-        folder=clean_folder, 
-        query=full_query, 
-        max_results=clean_limit, 
-        page_token=clean_token,
-        category=clean_cat
-    )
+    from gmail.client import GmailNetworkError
+    try:
+        list_res = client.list_messages(
+            folder=clean_folder, 
+            query=full_query, 
+            max_results=clean_limit, 
+            page_token=clean_token,
+            category=clean_cat
+        )
+    except GmailNetworkError as gne:
+        raise HTTPException(
+            status_code=502,
+            detail={"error": gne.error_code, "message": gne.message}
+        )
     
     emails = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
     next_page_token = list_res.get("next_page_token") if isinstance(list_res, dict) else None
@@ -287,6 +326,17 @@ def send_email(req: SendEmailRequest):
             print(f"Error logging send_email audit: {err}")
         return {"status": "sent", "result": result, "draft_id": req.draft_id}
     except Exception as e:
+        from gmail.client import GmailNetworkError
+        if isinstance(e, GmailNetworkError):
+            try:
+                from agent.tools import log_tool_audit
+                log_tool_audit("send_email", req.model_dump(), {"error": e.message}, "failed")
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=502,
+                detail={"error": e.error_code, "message": e.message}
+            )
         try:
             from agent.tools import log_tool_audit
             log_tool_audit("send_email", req.model_dump(), {"error": str(e)}, "failed")

@@ -58,6 +58,19 @@ def log_tool_audit(tool_name: str, arguments: Dict[str, Any], result: Optional[D
             "user_id": user_id
         }).execute()
     except Exception as e:
+        if "agent_tool_calls_status_check" in str(e) and status == "auto_executed":
+            try:
+                safe_args = {**arguments, "auto_send": True}
+                supabase.table("agent_tool_calls").insert({
+                    "tool_name": tool_name,
+                    "arguments": safe_args,
+                    "result": result or {},
+                    "status": "executed",
+                    "user_id": user_id
+                }).execute()
+                return
+            except Exception:
+                pass
         print(f"Failed to log tool call to agent_tool_calls: {e}")
 
 

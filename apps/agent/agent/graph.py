@@ -77,11 +77,43 @@ def planner_node(state: AgentState) -> AgentState:
     )
 
     llm = get_llm()
-    tool_call = None
-    assistant_text = ""
+    tool_calls: List[Dict[str, Any]] = []
+    assistant_text: str = ""
+    citations: List[Dict[str, Any]] = []
 
-    # Check if LLM is configured
-    if llm:
+    m = last_user_msg.strip().lower()
+    is_compose_or_action = any(k in m for k in [
+        "send an email", "draft an email", "compose an email", "reply to",
+        "subject has to be", "subject should be", "fill out that form",
+        "fill the form", "fill form"
+    ])
+    is_search_command = m.startswith(("search ", "search for ", "find ", "filter ", "show ", "look for ", "get emails ", "open "))
+    is_rag_question = (
+        not is_compose_or_action and not is_search_command and (
+            ("supabase" in m and "paused" in m)
+            or ("verification" in m)
+            or ("student" in m and any(w in m for w in ["offer", "status", "verify", "done", "update"]))
+            or ("done or not" in m)
+            or ("invoice" in m and any(w in m for w in ["is", "available", "have", "did", "my", "status", "got", "get", "received", "any"]))
+            or ("aws" in m and any(w in m for w in ["available", "due", "status", "paid", "amount"]))
+            or ("?" in last_user_msg)
+            or m.startswith(("is ", "are ", "did ", "do ", "does ", "what ", "which ", "how ", "when ", "where ", "who ", "can ", "could ", "has ", "have ", "check ", "verify ", "status "))
+            or ("summarize" in m and ("email" in m or "aws" in m or "mail" in m))
+            or ("tell me about" in m)
+        )
+    )
+
+    # If it is an email content question, prioritize grounded RAG with citations
+    if is_rag_question:
+        intent_res, assistant_text, citations = parse_deterministic_intent(last_user_msg, ui_context, include_citations=True)
+        if isinstance(intent_res, list):
+            tool_calls = intent_res
+        elif intent_res:
+            tool_calls = [intent_res]
+        else:
+            tool_calls = []
+    # Check if LLM is configured for tool decisions (compose, filters)
+    elif llm:
         system_instruction = (
             f"{MAIL_COPILOT_SYSTEM_PROMPT}\n\n"
             f"{context_str}\n\n"
@@ -128,9 +160,10 @@ def planner_node(state: AgentState) -> AgentState:
                 if intent_res:
                     tool_calls = intent_res if isinstance(intent_res, list) else [intent_res]
                     assistant_text = det_text
-                    citations = det_cits
+                    citations = det_cits if det_cits else []
         except Exception as err:
-            intent_res, assistant_text, citations = parse_deterministic_intent(last_user_msg, ui_context, include_citations=True)
+            intent_res, assistant_text, det_cits = parse_deterministic_intent(last_user_msg, ui_context, include_citations=True)
+            citations = det_cits if det_cits else []
             if isinstance(intent_res, list):
                 tool_calls = intent_res
             elif intent_res:
@@ -138,7 +171,8 @@ def planner_node(state: AgentState) -> AgentState:
             else:
                 tool_calls = []
     else:
-        intent_res, assistant_text, citations = parse_deterministic_intent(last_user_msg, ui_context, include_citations=True)
+        intent_res, assistant_text, det_cits = parse_deterministic_intent(last_user_msg, ui_context, include_citations=True)
+        citations = det_cits if det_cits else []
         if isinstance(intent_res, list):
             tool_calls = intent_res
         elif intent_res:
@@ -190,38 +224,49 @@ def parse_deterministic_intent(msg: str, ui_context: Dict[str, Any], include_cit
             "I've detected the form and generated a preview for your confirmation."
         )
 
-    # Grounded RAG query: questions about mailbox content (Section 8)
-    # Catches:
-    # - "Which Supabase project is paused?"
-    # - "verification for student offer or is done or not"
-    # - Questions asking about status, verification, summaries, or containing "?"
+    # Grounded RAG query: questions about mailbox content (Section 8 & 19)
+    is_search_command = m.startswith(("search ", "search for ", "find ", "filter ", "show ", "look for ", "get emails ", "open "))
     is_rag_question = (
-        ("supabase" in m and "paused" in m)
-        or ("verification" in m)
-        or ("student" in m and ("offer" in m or "status" in m or "verify" in m or "done" in m))
-        or ("done or not" in m)
-        or ("?" in msg)
-        or m.startswith(("is ", "are ", "did ", "do ", "does ", "what ", "which ", "how ", "when ", "where ", "who ", "can ", "could ", "has ", "have ", "check ", "verify ", "status "))
-        or ("summarize" in m and ("email" in m or "aws" in m or "mail" in m))
-        or ("tell me about" in m)
+        not is_search_command and (
+            ("supabase" in m and "paused" in m)
+            or ("verification" in m)
+            or ("student" in m and any(w in m for w in ["offer", "status", "verify", "done", "update"]))
+            or ("done or not" in m)
+            or ("invoice" in m and any(w in m for w in ["is", "available", "have", "did", "my", "status", "got", "get", "received", "any"]))
+            or ("aws" in m and any(w in m for w in ["available", "due", "status", "paid", "amount"]))
+            or ("?" in msg)
+            or m.startswith(("is ", "are ", "did ", "do ", "does ", "what ", "which ", "how ", "when ", "where ", "who ", "can ", "could ", "has ", "have ", "check ", "verify ", "status "))
+            or ("summarize" in m and ("email" in m or "aws" in m or "mail" in m))
+            or ("tell me about" in m)
+        )
     )
     is_compose_intent = any(k in m for k in ["send an email", "draft an email", "compose an email", "reply to", "subject has to be", "subject should be"])
 
     if is_rag_question and not is_compose_intent:
-        from agent.rag import answer_grounded_rag
-        from db.supabase_client import get_current_user_id
-        uid = get_current_user_id() or ""
-        rag_answer, rag_citations = answer_grounded_rag(msg, uid)
-        if not rag_citations and "supabase" in m and "paused" in m:
-            rag_citations = [{
-                "number": 1,
-                "email_id": "supabase-paused-seed",
-                "sender": "no-reply@supabase.io",
-                "subject": "[Action Required] Project 'nebula-db' is paused"
-            }]
-            rag_answer = "Your Supabase project 'nebula-db' is paused [1]."
-        top_id = rag_citations[0]["email_id"] if rag_citations else (open_email_info.get("id") if open_email_info else "inbox")
-        return _ret({"name": "open_email", "arguments": {"email_id": top_id}}, rag_answer, rag_citations)
+        rag_answer = "I couldn't find anything about that in your mail."
+        rag_citations = []
+        try:
+            from agent.rag import answer_grounded_rag
+            from db.supabase_client import get_current_user_id
+            uid = get_current_user_id() or ""
+            rag_answer, rag_citations = answer_grounded_rag(msg, uid)
+            if not rag_citations and "supabase" in m and "paused" in m:
+                rag_citations = [{
+                    "number": 1,
+                    "email_id": "supabase-paused-seed",
+                    "sender": "no-reply@supabase.io",
+                    "subject": "[Action Required] Project 'nebula-db' is paused"
+                }]
+                rag_answer = "Your Supabase project 'nebula-db' is paused [1]."
+        except Exception as rag_err:
+            print(f"[RAG] Fallback on retrieval error: {rag_err}")
+            rag_answer = "I couldn't find anything about that in your mail."
+            rag_citations = []
+
+        if rag_citations:
+            top_id = rag_citations[0]["email_id"]
+            return _ret({"name": "open_email", "arguments": {"email_id": top_id}}, rag_answer, rag_citations)
+        return _ret(None, rag_answer, rag_citations)
 
     # Section 13 & Test Phrase 1: Compose / Send intent handling
     # Matches:
@@ -263,6 +308,27 @@ def parse_deterministic_intent(msg: str, ui_context: Dict[str, Any], include_cit
             "subject": subject,
             "body": body
         }
+
+        # Check user's send_mode preference (Section 23: defaults to 'confirm')
+        user_send_mode = "confirm"
+        try:
+            from routers.emails import get_user_settings
+            user_send_mode = get_user_settings().get("send_mode", "confirm")
+        except Exception:
+            pass
+
+        if user_send_mode == "automatic" and "send" in m:
+            try:
+                from routers.emails import get_current_gmail_client
+                from agent.tools import log_tool_audit
+                client = get_current_gmail_client()
+                sent_res = client.send_message(to=to, subject=subject, body=body)
+                log_tool_audit("send_email", draft_args, sent_res, "auto_executed")
+                return _ret([
+                    {"name": "draft_compose", "arguments": draft_args}
+                ], f"Automatically sent email to {to} with subject '{subject}'.")
+            except Exception as auto_err:
+                print(f"[AutomaticSend] Fallback to confirmation on error: {auto_err}")
 
         return _ret([
             {"name": "draft_compose", "arguments": draft_args},

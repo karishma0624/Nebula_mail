@@ -21,10 +21,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+from gmail.client import GmailNetworkError
+
 # Register routers
 app.include_router(emails_router)
 app.include_router(chat_router)
 app.include_router(webhooks_router)
+
+@app.exception_handler(GmailNetworkError)
+async def gmail_network_error_handler(request, exc: GmailNetworkError):
+    return JSONResponse(
+        status_code=502,
+        content={"error": exc.error_code, "message": exc.message}
+    )
 
 @app.get("/health")
 def health_check():
