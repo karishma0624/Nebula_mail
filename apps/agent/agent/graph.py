@@ -175,7 +175,7 @@ def planner_node(state: AgentState) -> AgentState:
             if tool_name and tool_name != "null":
                 if tool_name in ["draft_compose", "prepare_send"] or ("send" in last_user_msg.lower() and tool_name == "draft_compose"):
                     is_send = ("send" in last_user_msg.lower() or tool_name == "prepare_send")
-                    tool_calls, assistant_text = finalize_send(args, is_immediate_send=is_send)
+                    tool_calls, assistant_text = finalize_send(args, is_immediate_send=is_send, ui_context=ui_context)
                 else:
                     tool_calls = [{"name": tool_name, "arguments": args}]
             else:
@@ -227,7 +227,8 @@ def finalize_send(
     draft_args: Dict[str, Any],
     is_immediate_send: bool = True,
     action_type: str = "email",
-    custom_confirm_msg: Optional[str] = None
+    custom_confirm_msg: Optional[str] = None,
+    ui_context: Optional[Dict[str, Any]] = None
 ) -> tuple[List[Dict[str, Any]], str]:
     """
     Unified gate for every send-producing flow (direct compose, reply, forward).
@@ -246,11 +247,14 @@ def finalize_send(
 
     # Check user's send_mode preference (Section 23 & 26: defaults to 'confirm')
     user_send_mode = "confirm"
-    try:
-        from routers.emails import get_user_settings
-        user_send_mode = get_user_settings().get("send_mode", "confirm")
-    except Exception:
-        pass
+    if ui_context and isinstance(ui_context, dict) and ui_context.get("send_mode"):
+        user_send_mode = ui_context.get("send_mode")
+    else:
+        try:
+            from routers.emails import get_user_settings
+            user_send_mode = get_user_settings().get("send_mode", "confirm")
+        except Exception:
+            pass
 
     if user_send_mode == "automatic" and is_immediate_send:
         try:
@@ -270,7 +274,10 @@ def finalize_send(
                 {"name": "draft_compose", "arguments": draft_args}
             ], f"Automatically sent {action_desc} to {to} with subject '{subject}'."
         except Exception as auto_err:
-            print(f"[AutomaticSend] Fallback to confirmation on error: {auto_err}")
+            print(f"[AutomaticSend] Error during direct sending: {auto_err}")
+            return [
+                {"name": "draft_compose", "arguments": draft_args}
+            ], f"Failed to send automatically ({auto_err}). The message draft has been prepared in compose."
 
     if is_immediate_send:
         action_desc = "reply" if action_type == "reply" else ("forwarded email" if action_type == "forward" else "email")
@@ -708,7 +715,7 @@ def parse_deterministic_intent(
             "body": body
         }
         custom_confirm = f"I've drafted the email to {to} and prepared it for your one-click confirmation."
-        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="email", custom_confirm_msg=custom_confirm)
+        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="email", custom_confirm_msg=custom_confirm, ui_context=ui_context)
         return _ret(tc, txt)
 
     # Section 13: Mid-conversation draft correction (e.g. "the subject has to be 'sample'")
@@ -725,7 +732,7 @@ def parse_deterministic_intent(
             "body": body_text
         }
         custom_confirm = f"Updated draft subject to '{new_subject}' and prepared it for your confirmation."
-        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="email", custom_confirm_msg=custom_confirm)
+        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="email", custom_confirm_msg=custom_confirm, ui_context=ui_context)
         return _ret(tc, txt)
 
     # Section 25: Reply handling (natural language described email or contextual reply)
@@ -758,7 +765,7 @@ def parse_deterministic_intent(
                     "thread_id": open_email_info.get("thread_id") or open_email_info.get("id")
                 }
                 has_body = bool(body)
-                tc, txt = finalize_send(draft_args, is_immediate_send=has_body, action_type="reply")
+                tc, txt = finalize_send(draft_args, is_immediate_send=has_body, action_type="reply", ui_context=ui_context)
                 return _ret(tc, txt)
             else:
                 return _ret(None, "Please open an email first to reply to it.")
@@ -806,7 +813,7 @@ def parse_deterministic_intent(
             "thread_id": thread_id
         }
         custom_confirm = f"I've drafted a reply to {target_sender} regarding '{orig_subj}' and prepared it for your one-click confirmation."
-        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="reply", custom_confirm_msg=custom_confirm)
+        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="reply", custom_confirm_msg=custom_confirm, ui_context=ui_context)
         return _ret(tc, txt)
 
     # Section 26: Forward handling
@@ -839,7 +846,7 @@ def parse_deterministic_intent(
             "thread_id": target_email.get("thread_id") or target_email.get("id")
         }
         custom_confirm = f"I've prepared the forwarded email to {to_addr} and prepared it for your one-click confirmation."
-        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="forward", custom_confirm_msg=custom_confirm)
+        tc, txt = finalize_send(draft_args, is_immediate_send=True, action_type="forward", custom_confirm_msg=custom_confirm, ui_context=ui_context)
         return _ret(tc, txt)
 
     # Standardized natural-language relative days: "last 10 days", "last 7 days", "last 30 days", "past N days"

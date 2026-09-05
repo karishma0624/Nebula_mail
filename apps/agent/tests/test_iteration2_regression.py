@@ -7,7 +7,8 @@ from agent.state import AgentState
 
 @pytest.fixture(autouse=True)
 def mock_no_network_llm():
-    with patch("agent.graph.get_llm", return_value=None):
+    with patch("agent.graph.get_llm", return_value=None), \
+         patch("routers.emails.get_user_settings", return_value={"send_mode": "confirm"}):
         yield
 
 def test_section_13_single_shot_draft_placement_drive():

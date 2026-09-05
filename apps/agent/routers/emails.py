@@ -84,7 +84,6 @@ def get_auth_status():
 class UserSettingsRequest(BaseModel):
     send_mode: str = "confirm"
 
-@router.get("/user/settings")
 def get_user_settings():
     from db.supabase_client import get_supabase, get_current_user_id
     uid = get_current_user_id()
@@ -97,6 +96,11 @@ def get_user_settings():
         except Exception as e:
             print(f"Error fetching user send_mode: {e}")
     return {"send_mode": "confirm"}
+
+@router.get("/user/settings")
+def fetch_user_settings_route():
+    import routers.emails as em_mod
+    return em_mod.get_user_settings()
 
 @router.post("/user/settings")
 def update_user_settings(req: UserSettingsRequest):

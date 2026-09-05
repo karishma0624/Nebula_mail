@@ -66,6 +66,12 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       }
 
       useMailStore.getState().setIsTypingCompose(false);
+
+      if (useMailStore.getState().sendMode === 'automatic' && name === 'draft_compose') {
+        await new Promise((res) => setTimeout(res, 800));
+        useMailStore.getState().resetComposeDraft();
+        useMailStore.getState().setView('sent');
+      }
       break;
     }
 
@@ -189,9 +195,34 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
 
       const freshDraft = { draft_id, to, subject, body, thread_id, reply_to_id };
 
+      // In automatic send mode, dispatch immediately without opening review modal
+      if (store.sendMode === 'automatic') {
+        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+        try {
+          await fetch(`${apiUrl}/emails/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(freshDraft),
+          });
+          store.resetComposeDraft();
+          store.setView('sent');
+        } catch (e) {
+          console.error('Automatic send failed, opening confirmation modal as fallback:', e);
+          store.setComposeDraft(freshDraft);
+          store.openConfirmModal(freshDraft);
+        }
+        break;
+      }
+
       // Update composeDraft directly to guarantee zero drift
       store.setComposeDraft(freshDraft);
       store.openConfirmModal(freshDraft);
+      break;
+    }
+
+    case 'send_auto_dispatched': {
+      store.resetComposeDraft();
+      store.setView('sent');
       break;
     }
 

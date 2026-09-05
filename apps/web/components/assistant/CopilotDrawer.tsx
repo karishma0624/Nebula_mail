@@ -46,7 +46,9 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     currentView, 
     openEmail,
     activeConversationId,
-    setActiveConversationId 
+    setActiveConversationId,
+    sendMode,
+    setSendMode
   } = useMailStore();
 
   const [activeTab, setActiveTab] = useState<'suggestions' | 'history' | 'settings' | 'feedback'>('suggestions');
@@ -58,7 +60,6 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   // Settings State
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [autoReadAloud, setAutoReadAloud] = useState(false);
-  const [sendMode, setSendMode] = useState<'confirm' | 'automatic'>('confirm');
   const [preferredLanguage, setPreferredLanguage] = useState<string>('auto');
 
   // Feedback State

@@ -35,7 +35,8 @@ export const AssistantPanel: React.FC = () => {
     isSearchActive,
     searchQueryDescription,
     filteredEmails,
-    emails
+    emails,
+    sendMode
   } = useMailStore();
 
 
@@ -149,6 +150,7 @@ export const AssistantPanel: React.FC = () => {
         is_search_active: isSearchActive,
         search_query: searchQueryDescription,
         preferred_language: preferredLang !== 'auto' ? preferredLang : undefined,
+        send_mode: sendMode,
         top_emails: (filteredEmails && filteredEmails.length > 0 ? filteredEmails : emails || []).slice(0, 6).map(e => ({
           id: e.id,
           sender: e.sender,

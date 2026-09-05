@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useMailStore } from '../../lib/store';
-import { Send, X, Sparkles, ShieldCheck } from 'lucide-react';
+import { Send, X, Sparkles, ShieldCheck, Zap } from 'lucide-react';
 
 export const ComposeForm: React.FC = () => {
   const { 
@@ -11,16 +11,53 @@ export const ComposeForm: React.FC = () => {
     resetComposeDraft, 
     setView, 
     openConfirmModal,
-    isTypingCompose 
+    isTypingCompose,
+    sendMode
   } = useMailStore();
 
-  const handleSendClick = (e: React.FormEvent) => {
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSendClick = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!composeDraft.to || !composeDraft.subject) {
       alert('Please provide recipient and subject');
       return;
     }
-    // Strict Guardrail: Always open confirmation modal, never send instantly without approval
+
+    // When send_mode is automatic, send immediately without confirmation modal
+    if (sendMode === 'automatic') {
+      setIsSending(true);
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${apiUrl}/emails/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            draft_id: composeDraft.draft_id || ('draft-' + Date.now()),
+            to: composeDraft.to,
+            subject: composeDraft.subject,
+            body: composeDraft.body,
+            thread_id: composeDraft.thread_id,
+            reply_to_id: composeDraft.reply_to_id,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail?.message || errorData.detail || errorData.message || 'Failed to transmit message via Gmail API');
+        }
+
+        resetComposeDraft();
+        setView('sent');
+      } catch (err: any) {
+        alert(err.message || 'Failed to transmit message');
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
+    // Default confirm mode: open confirmation modal
     openConfirmModal(composeDraft);
   };
 
@@ -91,9 +128,18 @@ export const ComposeForm: React.FC = () => {
 
         {/* Action Bar */}
         <div className="pt-4 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <ShieldCheck size={14} className="text-blue-600 dark:text-indigo-400" />
-            <span>Human-in-the-loop review required before final transmission</span>
+          <div className="flex items-center gap-2 text-xs">
+            {sendMode === 'automatic' ? (
+              <>
+                <Zap size={14} className="text-amber-500 shrink-0" />
+                <span className="text-amber-700 dark:text-amber-400 font-medium">Automatic send active: message will be dispatched immediately without confirmation modal.</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck size={14} className="text-blue-600 dark:text-indigo-400 shrink-0" />
+                <span className="text-slate-500 dark:text-slate-400">Human-in-the-loop review required before final transmission</span>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -109,11 +155,24 @@ export const ComposeForm: React.FC = () => {
             </button>
             <button
               type="submit"
-              disabled={isTypingCompose}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-lg shadow-blue-600/25 transition disabled:opacity-50"
+              disabled={isTypingCompose || isSending}
+              className={`flex items-center gap-2 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-lg transition disabled:opacity-50 ${
+                sendMode === 'automatic'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-600/30'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/25'
+              }`}
             >
-              <Send size={14} />
-              <span>Review & Send</span>
+              {isSending ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <>
+                  <Send size={14} />
+                  <span>{sendMode === 'automatic' ? 'Send Automatically' : 'Review & Send'}</span>
+                </>
+              )}
             </button>
           </div>
         </div>

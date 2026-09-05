@@ -83,6 +83,7 @@ export interface UIContext {
     date?: string;
   }>;
   preferred_language?: string;
+  send_mode?: 'confirm' | 'automatic';
 }
 
 export type EmailCategory = 'primary' | 'promotions' | 'social' | 'updates';

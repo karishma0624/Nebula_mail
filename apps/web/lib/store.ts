@@ -15,6 +15,7 @@ interface MailState {
   isConfirmModalOpen: boolean;
   isLoadingEmails: boolean;
   isAssistantOpen: boolean;
+  sendMode: 'confirm' | 'automatic';
 
   // Pagination & Mailbox Stats
   currentPage: number;
@@ -52,6 +53,7 @@ interface MailState {
   setIsTypingCompose: (isTyping: boolean) => void;
   openConfirmModal: (draft: ComposeDraft) => void;
   closeConfirmModal: () => void;
+  setSendMode: (mode: 'confirm' | 'automatic') => void;
   toggleAssistant: () => void;
   setAssistantOpen: (open: boolean) => void;
   setLoadingEmails: (loading: boolean) => void;
@@ -93,6 +95,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   isConfirmModalOpen: false,
   isLoadingEmails: false,
   isAssistantOpen: true,
+  sendMode: (typeof window !== 'undefined' ? (localStorage.getItem('nebula_send_mode') as 'confirm' | 'automatic') : 'confirm') || 'confirm',
 
   currentPage: 1,
   nextPageToken: null,
@@ -207,18 +210,47 @@ export const useMailStore = create<MailState>((set, get) => ({
 
   setIsTypingCompose: (isTyping) => set({ isTypingCompose: isTyping }),
 
-  openConfirmModal: (draft) => set({
-    draftToSend: {
-      ...draft,
-      draft_id: draft.draft_id || ('draft-' + Date.now())
-    },
-    isConfirmModalOpen: true
-  }),
+  openConfirmModal: (draft) => {
+    if (get().sendMode === 'automatic') {
+      const freshDraft = {
+        ...draft,
+        draft_id: draft.draft_id || ('draft-' + Date.now())
+      };
+      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+      fetch(`${apiUrl}/emails/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(freshDraft),
+      }).then(() => {
+        get().resetComposeDraft();
+        get().setView('sent');
+      }).catch((err) => {
+        console.error('Automatic send in openConfirmModal failed:', err);
+      });
+      return;
+    }
+
+    set({
+      draftToSend: {
+        ...draft,
+        draft_id: draft.draft_id || ('draft-' + Date.now())
+      },
+      isConfirmModalOpen: true
+    });
+  },
 
   closeConfirmModal: () => set({
     isConfirmModalOpen: false,
     draftToSend: null
   }),
+
+  setSendMode: (mode) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nebula_send_mode', mode);
+      window.dispatchEvent(new Event('sendmodechange'));
+    }
+    set({ sendMode: mode });
+  },
 
   toggleAssistant: () => set((state) => ({ isAssistantOpen: !state.isAssistantOpen })),
   
