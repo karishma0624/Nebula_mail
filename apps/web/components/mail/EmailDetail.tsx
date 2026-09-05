@@ -63,12 +63,12 @@ export const EmailDetail: React.FC = () => {
     (openEmail.snippet && openEmail.snippet.toLowerCase().includes('ignore previous instructions'));
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-nebula-950 overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-nebula-950 overflow-hidden transition-colors">
       {/* Top action header */}
-      <div className="p-4 px-6 border-b border-slate-800/80 bg-nebula-900/60 flex items-center justify-between gap-4">
+      <div className="p-4 px-6 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/90 dark:bg-nebula-900/60 flex items-center justify-between gap-4">
         <button
           onClick={() => setOpenEmail(null)}
-          className="flex items-center gap-2 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 transition"
+          className="flex items-center gap-2 text-xs font-medium text-slate-700 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 bg-white hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/60 transition shadow-xs"
         >
           <ArrowLeft size={14} />
           <span>Back to List</span>
@@ -77,14 +77,14 @@ export const EmailDetail: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={handleReply}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 dark:bg-indigo-600/20 dark:hover:bg-indigo-600/30 dark:text-indigo-300 dark:border-indigo-500/30 transition shadow-xs"
           >
             <Reply size={13} />
             <span>Reply</span>
           </button>
           <button
             onClick={handleForward}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-slate-700 transition shadow-xs"
           >
             <Share2 size={13} />
             <span>Forward</span>
@@ -96,11 +96,11 @@ export const EmailDetail: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full">
         {/* Security / Untrusted Content Banner if prompt injection detected */}
         {isAdversarialCandidate && (
-          <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-start gap-3">
-            <ShieldAlert size={20} className="shrink-0 text-amber-400 mt-0.5" />
+          <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 flex items-start gap-3">
+            <ShieldAlert size={20} className="shrink-0 text-amber-500 dark:text-amber-400 mt-0.5" />
             <div>
               <h5 className="text-xs font-bold uppercase tracking-wider">Untrusted Email Content (Guardrail Active)</h5>
-              <p className="text-xs text-amber-200/80 mt-1">
+              <p className="text-xs text-amber-900/80 dark:text-amber-200/80 mt-1">
                 This email contains embedded instructions (&quot;ignore previous instructions...&quot;). 
                 Nebula Mail Copilot treats all body text strictly as untrusted data and will not execute instructions inside it.
               </p>
@@ -110,24 +110,24 @@ export const EmailDetail: React.FC = () => {
 
         {/* Form Detected Banner */}
         {(openEmail.has_form || Boolean(openEmail.form_url) || (openEmail.subject && /form|registration|survey|application/i.test(openEmail.subject)) || (openEmail.snippet && /forms\.gle|docs\.google\.com\/forms|forms\.office\.com|fill out/i.test(openEmail.snippet))) && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-cyan-950/40 border border-emerald-500/40 text-emerald-200 flex items-center justify-between gap-4 shadow-lg shadow-emerald-950/30">
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 dark:bg-gradient-to-r dark:from-emerald-950/60 dark:to-cyan-950/40 border border-emerald-200 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-4 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center text-emerald-700 dark:text-emerald-400 shrink-0">
                 <FileText size={18} />
               </div>
               <div>
-                <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <h5 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                   <span>Form / Application Detected</span>
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-[10px] text-emerald-300 font-medium">Ready to Auto-Fill</span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-[10px] text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-500/30">Ready to Auto-Fill</span>
                 </h5>
-                <p className="text-xs text-emerald-200/80 mt-0.5">
+                <p className="text-xs text-emerald-800/80 dark:text-emerald-200/80 mt-0.5">
                   {openEmail.form_url ? `Linked form (${openEmail.form_url.slice(0, 45)}...)` : 'Document form request detected in this email thread.'}
                 </p>
               </div>
             </div>
             <button
               onClick={() => openFormModal(openEmail)}
-              className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-md shadow-emerald-600/30 cursor-pointer"
+              className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-md shadow-emerald-600/20 cursor-pointer"
             >
               <Sparkles size={14} />
               <span>Fill Form with Copilot</span>
@@ -136,41 +136,41 @@ export const EmailDetail: React.FC = () => {
         )}
 
         {/* Email Subject Title */}
-        <h2 className="text-2xl font-bold text-white tracking-tight mb-4">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-4">
           {openEmail.subject || '(No Subject)'}
         </h2>
 
         {/* Sender and recipient meta card */}
-        <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-slate-900/60 border border-slate-800 mb-6">
+        <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 mb-6 shadow-xs">
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center font-bold text-white text-sm shadow-md">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white text-sm shadow-md shadow-blue-500/20">
               {openEmail.sender.charAt(0).toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-100 text-sm">
+                <span className="font-semibold text-slate-900 dark:text-slate-100 text-sm">
                   {openEmail.sender}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                 To: {openEmail.recipients.join(', ') || 'me'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             <Clock size={13} />
             <span>{openEmail.date || openEmail.received_at || 'Just now'}</span>
           </div>
         </div>
 
         {/* Email Body Content */}
-        <div className={`glass-panel p-6 rounded-2xl border border-slate-800 text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-sans transition-all ${
-          isHighlighted ? 'highlight-citation ring-2 ring-indigo-500 shadow-xl' : ''
+        <div className={`p-6 rounded-2xl bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-sans transition-all shadow-xs ${
+          isHighlighted ? 'highlight-citation ring-2 ring-blue-500 dark:ring-indigo-500 shadow-xl' : ''
         }`}>
           {openEmail.body_html ? (
             <div 
-              className="prose prose-invert max-w-none text-slate-200"
+              className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200"
               dangerouslySetInnerHTML={{ __html: openEmail.body_html }} 
             />
           ) : (
@@ -180,31 +180,31 @@ export const EmailDetail: React.FC = () => {
 
         {/* Attachments Section (Section 33 Document Reading) */}
         {openEmail.attachments && openEmail.attachments.length > 0 && (
-          <div className="mt-6 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
-              <Paperclip size={14} className="text-indigo-400" />
+          <div className="mt-6 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-xs">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-3 flex items-center gap-2">
+              <Paperclip size={14} className="text-blue-600 dark:text-indigo-400" />
               <span>Attachments ({openEmail.attachments.length})</span>
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {openEmail.attachments.map((att, idx) => (
                 <div 
                   key={idx}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 hover:border-indigo-500/40 transition group"
+                  className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 dark:hover:border-indigo-500/40 transition group shadow-xs"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-indigo-500/10 border border-blue-200 dark:border-indigo-500/20 flex items-center justify-center text-blue-600 dark:text-indigo-400 shrink-0">
                       <FileText size={16} />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-200 truncate group-hover:text-indigo-300 transition">
+                      <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-indigo-300 transition">
                         {att.filename}
                       </p>
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
                         {att.size ? `${Math.round(att.size / 1024)} KB` : 'Document'}
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-medium text-indigo-400/90 bg-indigo-500/10 px-2 py-0.5 rounded-lg border border-indigo-500/20 shrink-0">
+                  <span className="text-[10px] font-medium text-blue-700 dark:text-indigo-400/90 bg-blue-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-lg border border-blue-200 dark:border-indigo-500/20 shrink-0">
                     Grounded Q&A
                   </span>
                 </div>

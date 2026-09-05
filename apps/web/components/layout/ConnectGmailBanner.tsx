@@ -33,43 +33,43 @@ export const ConnectGmailBanner: React.FC<ConnectGmailBannerProps> = () => {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8 bg-nebula-950 select-none">
-      <div className="max-w-md w-full glass-panel border border-slate-800 rounded-3xl p-8 shadow-2xl shadow-indigo-950/50 text-center relative overflow-hidden">
+    <div className="flex-1 flex items-center justify-center p-8 bg-[#f6f8fc] dark:bg-nebula-950 select-none transition-colors">
+      <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-xl text-center relative overflow-hidden">
         {/* Glow ambient background */}
-        <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-24 -left-24 w-48 h-48 bg-blue-500/10 dark:bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-500/10 dark:bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
 
         {/* Icon Header */}
-        <div className="relative mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-6">
+        <div className="relative mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/25 mb-6">
           <Mail className="text-white" size={32} />
-          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-slate-900 rounded-full border border-slate-700 flex items-center justify-center">
-            <KeyRound size={12} className="text-cyan-400" />
+          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white dark:bg-slate-900 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-xs">
+            <KeyRound size={12} className="text-blue-600 dark:text-cyan-400" />
           </div>
         </div>
 
-        <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">
           Connect your Gmail
         </h2>
         
-        <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+        <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed">
           Nebula Mail connects directly to your real Gmail account via secure Google OAuth2. 
           Zero fake data — all inbox items, search, and AI copilot actions execute against live mail.
         </p>
 
         {/* Security badges */}
         <div className="grid grid-cols-2 gap-2.5 mb-6 text-left">
-          <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-2">
-            <Shield size={16} className="text-emerald-400 shrink-0" />
-            <span className="text-xs text-slate-300 font-medium">Readonly + Send</span>
+          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+            <Shield size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">Readonly + Send</span>
           </div>
-          <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-2">
-            <Sparkles size={16} className="text-cyan-400 shrink-0" />
-            <span className="text-xs text-slate-300 font-medium">AI Guardrails</span>
+          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+            <Sparkles size={16} className="text-blue-600 dark:text-cyan-400 shrink-0" />
+            <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">AI Guardrails</span>
           </div>
         </div>
 
         {errorMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2 text-left">
+          <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-800 dark:text-rose-300 text-xs flex items-start gap-2 text-left">
             <AlertTriangle size={15} className="shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>

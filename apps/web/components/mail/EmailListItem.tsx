@@ -149,7 +149,7 @@ export const EmailListItem: React.FC<EmailListItemProps> = ({
           <HighlightedText text={email.subject || '(No Subject)'} terms={highlightTerms} />
         </span>
         <span className="text-slate-400 dark:text-slate-600 shrink-0 select-none">-</span>
-        <span className="text-slate-500 dark:text-slate-400 text-xs truncate flex-1">
+        <span className="text-slate-600 dark:text-slate-400 text-xs truncate flex-1">
           <HighlightedText text={email.snippet || ''} terms={highlightTerms} />
         </span>
       </div>
@@ -160,7 +160,7 @@ export const EmailListItem: React.FC<EmailListItemProps> = ({
           className={`text-xs whitespace-nowrap ${
             email.is_unread
               ? 'font-bold text-slate-900 dark:text-slate-200'
-              : 'font-normal text-slate-500 dark:text-slate-500'
+              : 'font-medium text-slate-600 dark:text-slate-400'
           }`}
         >
           {formatDate(email.date || email.received_at)}

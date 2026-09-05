@@ -25,16 +25,16 @@ export const ComposeForm: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-nebula-950 overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-nebula-950 overflow-hidden transition-colors">
       {/* Compose header */}
-      <div className="p-4 px-6 border-b border-slate-800/80 bg-nebula-900/60 flex items-center justify-between">
+      <div className="p-4 px-6 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-nebula-900/60 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h3 className="text-base font-semibold text-white">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-white">
             {composeDraft.reply_to_id ? 'Reply to Message' : 'New Message'}
           </h3>
           {isTypingCompose && (
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 animate-pulse">
-              <Sparkles size={12} className="text-cyan-400" />
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs bg-blue-50 dark:bg-indigo-500/20 text-blue-700 dark:text-indigo-300 border border-blue-200 dark:border-indigo-500/40 animate-pulse">
+              <Sparkles size={12} className="text-blue-600 dark:text-cyan-400" />
               <span>Copilot is typing...</span>
             </div>
           )}
@@ -44,7 +44,7 @@ export const ComposeForm: React.FC = () => {
             resetComposeDraft();
             setView('inbox');
           }}
-          className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition"
+          className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-200/70 dark:hover:bg-slate-800 transition"
         >
           <X size={18} />
         </button>
@@ -53,28 +53,28 @@ export const ComposeForm: React.FC = () => {
       {/* Form body */}
       <form onSubmit={handleSendClick} className="flex-1 flex flex-col p-6 max-w-4xl mx-auto w-full gap-4 overflow-y-auto">
         {/* Recipient */}
-        <div className="flex items-center gap-3 border-b border-slate-800/80 pb-3">
-          <label className="text-xs font-semibold text-slate-400 w-16">To:</label>
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/80 pb-3">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 w-16">To:</label>
           <input
             type="email"
             value={composeDraft.to}
             onChange={(e) => setComposeDraft({ to: e.target.value })}
             placeholder="recipient@example.com"
             required
-            className="flex-1 bg-transparent text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
           />
         </div>
 
         {/* Subject */}
-        <div className="flex items-center gap-3 border-b border-slate-800/80 pb-3">
-          <label className="text-xs font-semibold text-slate-400 w-16">Subject:</label>
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/80 pb-3">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 w-16">Subject:</label>
           <input
             type="text"
             value={composeDraft.subject}
             onChange={(e) => setComposeDraft({ subject: e.target.value })}
             placeholder="Subject of your email"
             required
-            className="flex-1 bg-transparent text-sm text-slate-200 placeholder-slate-500 focus:outline-none font-medium"
+            className="flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none font-medium"
           />
         </div>
 
@@ -85,14 +85,14 @@ export const ComposeForm: React.FC = () => {
             onChange={(e) => setComposeDraft({ body: e.target.value })}
             placeholder="Write your email here, or ask Nebula Copilot to draft it for you..."
             required
-            className="flex-1 bg-transparent text-sm text-slate-200 placeholder-slate-500 focus:outline-none resize-none leading-relaxed p-2 font-sans"
+            className="flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none resize-none leading-relaxed p-2 font-sans"
           />
         </div>
 
         {/* Action Bar */}
-        <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <ShieldCheck size={14} className="text-indigo-400" />
+        <div className="pt-4 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <ShieldCheck size={14} className="text-blue-600 dark:text-indigo-400" />
             <span>Human-in-the-loop review required before final transmission</span>
           </div>
 
@@ -103,14 +103,14 @@ export const ComposeForm: React.FC = () => {
                 resetComposeDraft();
                 setView('inbox');
               }}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
               Discard
             </button>
             <button
               type="submit"
               disabled={isTypingCompose}
-              className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-lg shadow-indigo-600/30 transition disabled:opacity-50"
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold py-2.5 px-5 rounded-xl shadow-lg shadow-blue-600/25 transition disabled:opacity-50"
             >
               <Send size={14} />
               <span>Review & Send</span>

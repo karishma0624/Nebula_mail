@@ -249,30 +249,30 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       ];
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="w-80 md:w-96 h-full bg-nebula-900 border-l border-slate-800 shadow-2xl flex flex-col justify-between select-none animate-in slide-in-from-right duration-200">
+    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30 dark:bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="w-80 md:w-96 h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col justify-between select-none animate-in slide-in-from-right duration-200">
         {/* Drawer Header */}
-        <div className="p-4 px-5 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <Sparkles size={16} className="text-indigo-400" />
+        <div className="p-4 px-5 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/60 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Sparkles size={16} className="text-blue-600 dark:text-indigo-400" />
             <span>Copilot Menu & Tools</span>
           </h3>
           <button
             onClick={() => setCopilotDrawerOpen(false)}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded-lg hover:bg-slate-200/70 dark:hover:bg-slate-800 transition"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 bg-slate-950/40 text-xs">
+        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-950/40 text-xs">
           <button
             onClick={() => setActiveTab('suggestions')}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 font-semibold transition border-b-2 ${
               activeTab === 'suggestions'
-                ? 'border-indigo-500 text-indigo-300 bg-indigo-950/30'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-blue-600 dark:border-indigo-500 text-blue-700 dark:text-indigo-300 bg-white dark:bg-indigo-950/30'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             <Sparkles size={13} />
@@ -282,8 +282,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             onClick={() => setActiveTab('history')}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 font-semibold transition border-b-2 ${
               activeTab === 'history'
-                ? 'border-indigo-500 text-indigo-300 bg-indigo-950/30'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-blue-600 dark:border-indigo-500 text-blue-700 dark:text-indigo-300 bg-white dark:bg-indigo-950/30'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             <History size={13} />
@@ -293,8 +293,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             onClick={() => setActiveTab('settings')}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 font-semibold transition border-b-2 ${
               activeTab === 'settings'
-                ? 'border-indigo-500 text-indigo-300 bg-indigo-950/30'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-blue-600 dark:border-indigo-500 text-blue-700 dark:text-indigo-300 bg-white dark:bg-indigo-950/30'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             <Settings size={13} />
@@ -304,8 +304,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
             onClick={() => setActiveTab('feedback')}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 font-semibold transition border-b-2 ${
               activeTab === 'feedback'
-                ? 'border-indigo-500 text-indigo-300 bg-indigo-950/30'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-blue-600 dark:border-indigo-500 text-blue-700 dark:text-indigo-300 bg-white dark:bg-indigo-950/30'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             <MessageSquare size={13} />
@@ -318,7 +318,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           {/* TAB 1: CONTEXTUAL SUGGESTIONS */}
           {activeTab === 'suggestions' && (
             <div className="space-y-3">
-              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                 {openEmail ? 'Prompts for Open Email' : 'Recommended Prompts'}
               </div>
               <div className="space-y-2">
@@ -329,10 +329,10 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                       onSendPrompt?.(prompt);
                       setCopilotDrawerOpen(false);
                     }}
-                    className="w-full p-2.5 rounded-xl bg-slate-800/70 hover:bg-indigo-600/20 text-slate-200 hover:text-indigo-200 border border-slate-700/70 hover:border-indigo-500/40 text-xs text-left transition flex items-center justify-between group cursor-pointer"
+                    className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/80 dark:bg-slate-800/70 dark:hover:bg-indigo-600/20 text-slate-800 hover:text-blue-700 dark:text-slate-200 dark:hover:text-indigo-200 border border-slate-200 hover:border-blue-300 dark:border-slate-700/70 dark:hover:border-indigo-500/40 text-xs text-left transition flex items-center justify-between group cursor-pointer shadow-xs font-medium"
                   >
                     <span>{prompt}</span>
-                    <ArrowRight size={13} className="text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition shrink-0 ml-2" />
+                    <ArrowRight size={13} className="text-slate-400 group-hover:text-blue-600 dark:text-slate-500 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition shrink-0 ml-2" />
                   </button>
                 ))}
               </div>
@@ -343,13 +343,13 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           {activeTab === 'history' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Past Conversations
                 </span>
                 {conversations.length > 0 && (
                   <button
                     onClick={handleClearAllHistory}
-                    className="text-[10px] text-rose-400 hover:text-rose-300 transition hover:underline"
+                    className="text-[10px] text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 transition hover:underline font-semibold"
                   >
                     Clear All
                   </button>
@@ -373,20 +373,20 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                       onClick={() => handleSelectConv(conv.id)}
                       className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between group ${
                         activeConversationId === conv.id
-                          ? 'bg-indigo-950/60 border-indigo-500/50 text-indigo-200'
-                          : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60 text-slate-200'
+                          ? 'bg-blue-50 dark:bg-indigo-950/60 border-blue-400 dark:border-indigo-500/50 text-blue-900 dark:text-indigo-200 shadow-xs'
+                          : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/60 text-slate-800 dark:text-slate-200'
                       }`}
                     >
                       <div className="min-w-0 flex-1 pr-2">
-                        <h4 className="text-xs font-semibold truncate">{conv.title}</h4>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
+                        <h4 className="text-xs font-semibold truncate text-slate-900 dark:text-white">{conv.title}</h4>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                           <Clock size={10} />
                           <span>{new Date(conv.updated_at).toLocaleDateString()}</span>
                         </div>
                       </div>
                       <button
                         onClick={(e) => handleDeleteConv(conv.id, e)}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-700/80 transition"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-200 dark:hover:bg-slate-700/80 transition"
                         title="Delete conversation"
                       >
                         <Trash2 size={13} />
@@ -516,10 +516,10 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
           {/* TAB 4: FEEDBACK */}
           {activeTab === 'feedback' && (
             <div className="space-y-3">
-              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                 Send Feedback
               </div>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
                 Help improve Nebula Mail Copilot. Tell us how the assistant is performing.
               </p>
 
@@ -529,8 +529,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                   onClick={() => setFeedbackRating('positive')}
                   className={`flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition ${
                     feedbackRating === 'positive'
-                      ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300'
-                      : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800'
+                      ? 'bg-emerald-50 dark:bg-emerald-600/30 border-emerald-500 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <ThumbsUp size={13} />
@@ -540,8 +540,8 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                   onClick={() => setFeedbackRating('negative')}
                   className={`flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition ${
                     feedbackRating === 'negative'
-                      ? 'bg-rose-600/30 border-rose-500 text-rose-300'
-                      : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800'
+                      ? 'bg-rose-50 dark:bg-rose-600/30 border-rose-500 text-rose-700 dark:text-rose-300'
+                      : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <ThumbsDown size={13} />
@@ -555,13 +555,13 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                 onChange={(e) => setFeedbackText(e.target.value)}
                 placeholder="Write your feedback or bug report here..."
                 rows={4}
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition resize-none"
+                className="w-full bg-white dark:bg-slate-950/80 border border-slate-300 dark:border-slate-700/80 rounded-xl p-3 text-xs text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 dark:focus:border-indigo-500 transition resize-none shadow-xs"
               />
 
               <button
                 onClick={handleSubmitFeedback}
                 disabled={isSubmittingFeedback || !feedbackText.trim()}
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-600/30"
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-semibold text-xs transition disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-600/20 dark:shadow-indigo-600/30"
               >
                 {isSubmittingFeedback ? (
                   <>
