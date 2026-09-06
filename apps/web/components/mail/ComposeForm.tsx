@@ -24,40 +24,7 @@ export const ComposeForm: React.FC = () => {
       return;
     }
 
-    // When send_mode is automatic, send immediately without confirmation modal
-    if (sendMode === 'automatic') {
-      setIsSending(true);
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-        const response = await fetch(`${apiUrl}/emails/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            draft_id: composeDraft.draft_id || ('draft-' + Date.now()),
-            to: composeDraft.to,
-            subject: composeDraft.subject,
-            body: composeDraft.body,
-            thread_id: composeDraft.thread_id,
-            reply_to_id: composeDraft.reply_to_id,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail?.message || errorData.detail || errorData.message || 'Failed to transmit message via Gmail API');
-        }
-
-        resetComposeDraft();
-        setView('sent');
-      } catch (err: any) {
-        alert(err.message || 'Failed to transmit message');
-      } finally {
-        setIsSending(false);
-      }
-      return;
-    }
-
-    // Default confirm mode: open confirmation modal
+    // Human-in-the-loop confirmation is mandatory for all sends
     openConfirmModal(composeDraft);
   };
 

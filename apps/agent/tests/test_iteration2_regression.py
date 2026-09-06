@@ -182,11 +182,13 @@ def test_section_22_network_errors_graceful_handling():
         err_obj = data.get("detail") if "detail" in data else data
         assert err_obj.get("error") == "gmail_unreachable"
 
-    # 2. /emails/send under ServerNotFoundError
+    # 2. /emails/send under ServerNotFoundError (with approved draft per Fix 0)
+    from routers.emails import save_composed_draft
+    save_composed_draft("draft-net-err", {"to": "test@example.com", "subject": "hi", "body": "test", "status": "approved"})
     with patch("routers.emails.get_current_gmail_client") as mock_client_getter:
         mock_gmail = mock_client_getter.return_value
         mock_gmail.send_message.side_effect = GmailNetworkError()
-        res = client.post("/emails/send", json={"to": "test@example.com", "subject": "hi", "body": "test"})
+        res = client.post("/emails/send", json={"draft_id": "draft-net-err", "to": "test@example.com", "subject": "hi", "body": "test"})
         assert res.status_code == 502
         data = res.json()
         err_obj = data.get("detail") if "detail" in data else data
@@ -239,7 +241,7 @@ def test_section_19_grounded_qa_formatting_and_no_match():
         assert "I am ready. Tell me an action" not in reply  # MUST NOT be the idle fallback
 
 def test_section_23_send_mode_preferences_and_execution():
-    """Section 23: Default confirm mode requires human-in-the-loop, while automatic mode sends directly and logs auto_executed"""
+    """Section 23 & Fix 0: Human confirmation is mandatory under both send_mode='confirm' and send_mode='automatic'"""
     from fastapi.testclient import TestClient
     from main import app
     client = TestClient(app)
@@ -258,19 +260,18 @@ def test_section_23_send_mode_preferences_and_execution():
         assert tool_calls[1]["name"] == "prepare_send"
         assert "confirmation" in reply.lower()
 
-    # 3. When send_mode is automatic, composing calls send directly and logs auto_executed without prepare_send
+    # 3. FIX 0: When send_mode is automatic, human confirmation is STILL mandatory (no direct send, no Gmail API call)
     with patch("routers.emails.get_user_settings", return_value={"send_mode": "automatic"}):
         with patch("routers.emails.get_current_gmail_client") as mock_client:
             mock_inst = mock_client.return_value
-            mock_inst.send_message.return_value = {"id": "sent-msg-123"}
-            with patch("agent.tools.log_tool_audit") as mock_audit:
-                tool_calls, reply = parse_deterministic_intent("Send an email to user@test.com with subject 'Important' and body 'Hello world'", {})
-                # Should have sent directly
-                mock_inst.send_message.assert_called_once()
-                mock_audit.assert_called_with("send_email", {"draft_id": tool_calls[0]["arguments"]["draft_id"], "to": "user@test.com", "subject": "Important", "body": "Hello world"}, {"id": "sent-msg-123"}, "auto_executed")
-                assert len(tool_calls) == 1
-                assert tool_calls[0]["name"] == "draft_compose"
-                assert "automatically sent" in reply.lower()
+            tool_calls, reply = parse_deterministic_intent("Send an email to user@test.com with subject 'Important' and body 'Hello world'", {})
+            # Must NOT call send_message
+            mock_inst.send_message.assert_not_called()
+            # Must emit draft_compose and prepare_send
+            assert len(tool_calls) == 2
+            assert tool_calls[0]["name"] == "draft_compose"
+            assert tool_calls[1]["name"] == "prepare_send"
+            assert "confirmation" in reply.lower()
 
 
 def test_section_24_per_message_actions_and_aws_invoice_grounded_qa():
@@ -358,56 +359,35 @@ def test_section_26_unified_send_mode_across_compose_reply_forward():
         "thread_id": "thread-sarah-123"
     }
 
-    # --- Mode A: Automatic Send Mode ---
-    # With Send Mode = automatic, all three skip confirmation modal and send directly, logged as auto_executed
+    # --- Mode A: Automatic Send Mode (Fix 0: Now requires human confirmation identically) ---
     with patch("routers.emails.get_user_settings", return_value={"send_mode": "automatic"}):
         with patch("routers.emails.get_current_gmail_client") as mock_client_getter:
             mock_gmail = mock_client_getter.return_value
-            mock_gmail.send_message.return_value = {"id": "sent-msg-auto"}
-            with patch("agent.tools.log_tool_audit") as mock_audit:
-                # (a) Direct compose
-                tc_a, rep_a = parse_deterministic_intent("Send an email to user@test.com with subject 'Meeting' and body 'hello'", {})
-                assert len(tc_a) == 1
-                assert tc_a[0]["name"] == "draft_compose"
-                assert "automatically sent" in rep_a.lower()
-                mock_gmail.send_message.assert_called_with(
-                    to="user@test.com",
-                    subject="Meeting",
-                    body="hello",
-                    thread_id=None,
-                    reply_to_message_id=None
-                )
-                mock_audit.assert_called_with("send_email", tc_a[0]["arguments"], {"id": "sent-msg-auto"}, "auto_executed")
+            # (a) Direct compose: emits draft_compose + prepare_send, no direct send
+            tc_a, rep_a = parse_deterministic_intent("Send an email to user@test.com with subject 'Meeting' and body 'hello'", {})
+            assert len(tc_a) == 2
+            assert tc_a[0]["name"] == "draft_compose"
+            assert tc_a[1]["name"] == "prepare_send"
+            assert "confirmation" in rep_a.lower()
+            mock_gmail.send_message.assert_not_called()
 
-                # (b) Natural-language reply
-                with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_reply):
-                    mock_gmail.send_message.reset_mock()
-                    tc_b, rep_b = parse_deterministic_intent("reply to the mail about what to prepare for the class saying I will bring my laptop", {})
-                    assert len(tc_b) == 1
-                    assert tc_b[0]["name"] == "draft_compose"
-                    assert "automatically sent reply" in rep_b.lower()
-                    mock_gmail.send_message.assert_called_with(
-                        to="Karishma Sivakumar <karis@example.com>",
-                        subject="Re: reg online class",
-                        body="I will bring my laptop",
-                        thread_id="thread-class-123",
-                        reply_to_message_id="msg-class-prep-1"
-                    )
+            # (b) Natural-language reply: emits draft_compose + prepare_send, no direct send
+            with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_reply):
+                tc_b, rep_b = parse_deterministic_intent("reply to the mail about what to prepare for the class saying I will bring my laptop", {})
+                assert len(tc_b) == 2
+                assert tc_b[0]["name"] == "draft_compose"
+                assert tc_b[1]["name"] == "prepare_send"
+                assert "confirmation" in rep_b.lower()
+                mock_gmail.send_message.assert_not_called()
 
-                # (c) Forward
-                with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_fwd):
-                    mock_gmail.send_message.reset_mock()
-                    tc_c, rep_c = parse_deterministic_intent("forward the email from Sarah to bob@example.com", {})
-                    assert len(tc_c) == 1
-                    assert tc_c[0]["name"] == "draft_compose"
-                    assert "automatically sent forwarded email" in rep_c.lower()
-                    mock_gmail.send_message.assert_called_with(
-                        to="bob@example.com",
-                        subject="Fwd: Project Update",
-                        body="---------- Forwarded message ---------\nFrom: Sarah <sarah@company.com>\nSubject: Project Update\n\nHere is the project update.",
-                        thread_id="thread-sarah-123",
-                        reply_to_message_id=None
-                    )
+            # (c) Forward: emits draft_compose + prepare_send, no direct send
+            with patch("agent.graph.resolve_target_email_for_reply", return_value=seed_email_fwd):
+                tc_c, rep_c = parse_deterministic_intent("forward the email from Sarah to bob@example.com", {})
+                assert len(tc_c) == 2
+                assert tc_c[0]["name"] == "draft_compose"
+                assert tc_c[1]["name"] == "prepare_send"
+                assert "confirmation" in rep_c.lower()
+                mock_gmail.send_message.assert_not_called()
 
     # --- Mode B: Confirm Send Mode (Default) ---
     # With Send Mode = confirm, all three stop at prepare_send requiring explicit human confirmation

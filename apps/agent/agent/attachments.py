@@ -151,7 +151,7 @@ def search_semantic_attachments(query: str, user_id: str, limit: int = 3) -> Lis
         stopwords = {"what", "which", "where", "how", "when", "why", "is", "are", "does", "the", "a", "an", "in", "on", "about", "say", "does", "pdf", "attachment", "document"}
         words = [w.lower() for w in re.findall(r"[a-zA-Z0-9_-]+", query) if w.lower() not in stopwords and len(w) > 2]
 
-        query_builder = supabase.table("email_attachments").select("id, email_id, filename, mime_type, extracted_text, created_at").eq("user_id", user_id).eq("extraction_status", "extracted")
+        query_builder = supabase.table("agent_visible_attachments").select("id, email_id, filename, mime_type, extracted_text, created_at").eq("user_id", user_id).eq("extraction_status", "extracted")
         res = query_builder.order("created_at", desc=True).limit(20).execute()
 
         candidates = res.data or []

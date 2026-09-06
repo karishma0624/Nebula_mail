@@ -1,6 +1,8 @@
+import time
+import uuid
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from config import settings
 from auth.google_oauth import (
     get_authorization_url, 
@@ -17,7 +19,7 @@ _cached_credentials = None
 _cached_user_email = None
 
 class SendEmailRequest(BaseModel):
-    to: str
+    to: Union[str, List[str]]
     subject: str
     body: str
     thread_id: Optional[str] = None
@@ -25,11 +27,22 @@ class SendEmailRequest(BaseModel):
     reply_to_id: Optional[str] = None
 
 class DraftEmailRequest(BaseModel):
-    to: str
+    to: Union[str, List[str]]
     subject: str
     body: str
     thread_id: Optional[str] = None
     reply_to_id: Optional[str] = None
+
+class BulkSendRequest(BaseModel):
+    batch_id: str
+    draft_ids: List[str]
+    drafts: Optional[List[Dict[str, Any]]] = None
+
+class ApproveBulkSendRequest(BaseModel):
+    batch_id: str
+
+class RejectBulkSendRequest(BaseModel):
+    batch_id: str
 
 def get_current_gmail_client() -> GmailClient:
     global _cached_credentials
@@ -342,42 +355,276 @@ def reject_send(req: RejectSendRequest):
         print(f"Error logging rejected send: {e}")
     return {"status": "rejected"}
 
+_composed_drafts_store: Dict[str, Dict[str, Any]] = {}
+
+def save_composed_draft(draft_id: str, data: Dict[str, Any]):
+    _composed_drafts_store[draft_id] = data
+
+def get_composed_draft(draft_id: str) -> Optional[Dict[str, Any]]:
+    return _composed_drafts_store.get(draft_id)
+
+def _send_single_email(
+    to: Union[str, List[str]],
+    subject: str,
+    body: str,
+    thread_id: Optional[str] = None,
+    reply_to_id: Optional[str] = None,
+    draft_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    request_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Shared internal core function used by BOTH /emails/send and /emails/bulk_send.
+    Handles single retry with ~1s backoff, ~10s timeout, PII-safe logging, and structured errors.
+    """
+    from db.supabase_client import get_current_user_id
+    from agent.tools import log_tool_audit
+    from agent.errors import log_agent_error
+    from gmail.client import GmailNetworkError
+
+    uid = user_id or get_current_user_id()
+    client = get_current_gmail_client()
+
+    to_str = ", ".join(to) if isinstance(to, list) else to
+    audit_args = {
+        "draft_id": draft_id,
+        "to": to_str,
+        "subject": subject,
+        "body": body,
+        "thread_id": thread_id,
+        "reply_to_id": reply_to_id
+    }
+
+    last_exc = None
+    for attempt in range(2):
+        try:
+            result = client.send_message(
+                to=to_str,
+                subject=subject,
+                body=body,
+                thread_id=thread_id,
+                reply_to_message_id=reply_to_id
+            )
+            log_tool_audit("send_email", audit_args, result, "executed", user_id=uid, request_id=request_id)
+            return {"status": "sent", "result": result, "draft_id": draft_id}
+        except GmailNetworkError as gne:
+            last_exc = gne
+            if attempt == 0:
+                time.sleep(1)
+                continue
+            log_tool_audit("send_email", audit_args, {"error": gne.message}, "failed", user_id=uid, request_id=request_id)
+            log_agent_error("tool_error", "gmail_client", gne.message, {"tool": "send_email", "draft_id": draft_id}, user_id=uid, request_id=request_id)
+            raise HTTPException(status_code=502, detail={"error": gne.error_code, "message": gne.message})
+        except Exception as e:
+            last_exc = e
+            if attempt == 0:
+                time.sleep(1)
+                continue
+            log_tool_audit("send_email", audit_args, {"error": str(e)}, "failed", user_id=uid, request_id=request_id)
+            log_agent_error("tool_error", "gmail_client", str(e), {"tool": "send_email", "draft_id": draft_id}, user_id=uid, request_id=request_id)
+            raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/emails/send")
 def send_email(req: SendEmailRequest):
-    client = get_current_gmail_client()
-    print(f"[SendEmail] Transmitting: draft_id={req.draft_id}, to={req.to}, subject='{req.subject}', body='{req.body[:60]}...'")
-    try:
-        result = client.send_message(
-            to=req.to,
-            subject=req.subject,
-            body=req.body,
-            thread_id=req.thread_id,
-            reply_to_message_id=req.reply_to_id
-        )
+    """
+    POST /emails/send { draft_id, to, subject, body, thread_id?, reply_to_id? }
+    Mandatory backend authorization boundary:
+    Requires human confirmation before every send. Direct sends without draft approval are rejected.
+    """
+    from db.supabase_client import get_supabase, get_current_user_id
+    uid = get_current_user_id()
+    supabase = get_supabase()
+
+    if not req.draft_id:
+        raise HTTPException(status_code=400, detail="Missing draft_id. Direct send without draft approval is not permitted.")
+
+    # 1. Check in-memory composed drafts cache
+    stored_draft = get_composed_draft(req.draft_id)
+    if stored_draft:
+        if stored_draft.get("user_id") and uid and stored_draft["user_id"] != uid:
+            raise HTTPException(status_code=403, detail="Draft belongs to another user")
+        if stored_draft.get("status") == "rejected":
+            raise HTTPException(status_code=400, detail="Draft was cancelled or rejected")
+        if stored_draft.get("status") == "executed":
+            raise HTTPException(status_code=400, detail="Draft has already been sent")
+        stored_draft["status"] = "executed"
+    elif supabase and uid:
+        # 2. Check agent_tool_calls for prepare_send approval
         try:
-            from agent.tools import log_tool_audit
-            log_tool_audit("send_email", req.model_dump(), result, "executed")
-        except Exception as err:
-            print(f"Error logging send_email audit: {err}")
-        return {"status": "sent", "result": result, "draft_id": req.draft_id}
-    except Exception as e:
-        from gmail.client import GmailNetworkError
-        if isinstance(e, GmailNetworkError):
-            try:
-                from agent.tools import log_tool_audit
-                log_tool_audit("send_email", req.model_dump(), {"error": e.message}, "failed")
-            except Exception:
-                pass
-            raise HTTPException(
-                status_code=502,
-                detail={"error": e.error_code, "message": e.message}
+            calls = supabase.table("agent_tool_calls").select("*").eq("tool_name", "prepare_send").eq("user_id", uid).execute()
+            matching_call = None
+            for c in (calls.data or []):
+                args = c.get("arguments") or {}
+                res = c.get("result") or {}
+                if args.get("draft_id") == req.draft_id or res.get("draft_id") == req.draft_id:
+                    matching_call = c
+                    break
+            if matching_call:
+                if matching_call.get("status") == "rejected":
+                    raise HTTPException(status_code=400, detail="Draft was cancelled or rejected")
+                if matching_call.get("status") == "executed":
+                    raise HTTPException(status_code=400, detail="Draft has already been sent")
+                supabase.table("agent_tool_calls").update({"status": "executed"}).eq("id", matching_call["id"]).execute()
+            else:
+                # Never prepared
+                raise HTTPException(status_code=400, detail="Draft was never prepared through prepare_send")
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[send_email] Notice checking prepare_send approval: {e}")
+    else:
+        # Without database or stored draft, unapproved send cannot proceed
+        raise HTTPException(status_code=400, detail="Draft was never prepared through prepare_send")
+
+    return _send_single_email(
+        to=req.to,
+        subject=req.subject,
+        body=req.body,
+        thread_id=req.thread_id,
+        reply_to_id=req.reply_to_id,
+        draft_id=req.draft_id,
+        user_id=uid
+    )
+
+@router.post("/emails/bulk_send")
+def bulk_send_emails(req: BulkSendRequest):
+    """
+    POST /emails/bulk_send { batch_id, draft_ids, drafts? }
+    Mandatory backend authorization boundary:
+    Verifies that the submitted batch was explicitly approved through prepare_bulk_send.
+    Rejects with ZERO Gmail send API calls if:
+    - batches were never prepared
+    - invalid or unknown approval state
+    - already-consumed approvals
+    - rejected/cancelled approvals
+    - draft_ids belonging to another user
+    - batches that do not exactly match the approved batch
+    - more than 20 drafts
+    """
+    from db.supabase_client import get_supabase, get_current_user_id
+    from agent.errors import log_agent_error
+    uid = get_current_user_id()
+    supabase = get_supabase()
+
+    if not req.batch_id or not req.draft_ids:
+        raise HTTPException(status_code=400, detail="Missing batch_id or draft_ids")
+
+    # Enforce batch cap at 20
+    if len(req.draft_ids) > 20:
+        log_agent_error("input_error", "bulk_send", "Batch size exceeds maximum limit of 20 drafts", {"count": len(req.draft_ids)}, user_id=uid)
+        raise HTTPException(status_code=400, detail={"error": "input_error", "message": "Batch size exceeds maximum limit of 20 drafts"})
+
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database client unavailable")
+
+    # 1. Look up server-side approval state from agent_tool_calls
+    rec_res = supabase.table("agent_tool_calls").select("*").eq("id", req.batch_id).eq("tool_name", "prepare_bulk_send").execute()
+    if not rec_res.data or len(rec_res.data) == 0:
+        # Never prepared -> ZERO sends
+        raise HTTPException(status_code=400, detail="Batch was never prepared through prepare_bulk_send")
+
+    record = rec_res.data[0]
+
+    # 2. Check user ownership
+    if record.get("user_id") and uid and record["user_id"] != uid:
+        raise HTTPException(status_code=403, detail="Batch approval belongs to another user")
+
+    # 3. Check status
+    st = record.get("status")
+    if st == "rejected":
+        raise HTTPException(status_code=400, detail="Batch approval was rejected/cancelled")
+    if st == "executed":
+        raise HTTPException(status_code=400, detail="Batch approval has already been consumed")
+    if st not in ["pending_approval", "approved"]:
+        raise HTTPException(status_code=400, detail=f"Invalid or unknown approval state: {st}")
+
+    # 4. Check draft_ids match exactly
+    approved_args = record.get("arguments") or {}
+    approved_draft_ids = approved_args.get("draft_ids") or []
+    if sorted(req.draft_ids) != sorted(approved_draft_ids):
+        raise HTTPException(status_code=400, detail="Submitted draft_ids do not match the approved batch")
+
+    # 5. Atomic one-time claim
+    claim = supabase.table("agent_tool_calls").update({
+        "status": "executed"
+    }).eq("id", req.batch_id).in_("status", ["pending_approval", "approved"]).execute()
+
+    if not claim.data or len(claim.data) == 0:
+        # Concurrent race or already consumed
+        raise HTTPException(status_code=409, detail="Batch approval has already been claimed or consumed")
+
+    # 6. Execute each send via _send_single_email
+    sent = []
+    failed = []
+
+    # Map drafts by ID
+    drafts_map = {}
+    if req.drafts:
+        for d in req.drafts:
+            if d.get("draft_id"):
+                drafts_map[d["draft_id"]] = d
+    for d_id in req.draft_ids:
+        if d_id not in drafts_map:
+            stored = get_composed_draft(d_id)
+            if stored:
+                drafts_map[d_id] = stored
+
+    for d_id in req.draft_ids:
+        d = drafts_map.get(d_id, {})
+        to_addr = d.get("to") or ""
+        subject = d.get("subject") or ""
+        body = d.get("body") or ""
+        thread_id = d.get("thread_id")
+        reply_to_id = d.get("reply_to_id")
+
+        if d.get("user_id") and uid and d["user_id"] != uid:
+            failed.append({"draft_id": d_id, "error": "Draft belongs to another user"})
+            continue
+
+        try:
+            res = _send_single_email(
+                to=to_addr,
+                subject=subject,
+                body=body,
+                thread_id=thread_id,
+                reply_to_id=reply_to_id,
+                draft_id=d_id,
+                user_id=uid
             )
+            sent.append({"draft_id": d_id, "result": res.get("result")})
+        except Exception as exc:
+            print(f"[bulk_send] Individual draft send failed for {d_id}: {exc}")
+            failed.append({"draft_id": d_id, "error": str(exc)})
+
+    return {
+        "batch_id": req.batch_id,
+        "sent": sent,
+        "failed": failed
+    }
+
+@router.post("/emails/reject-bulk-send")
+def reject_bulk_send(req: RejectBulkSendRequest):
+    from db.supabase_client import get_supabase, get_current_user_id
+    uid = get_current_user_id()
+    supabase = get_supabase()
+    if supabase and uid:
         try:
-            from agent.tools import log_tool_audit
-            log_tool_audit("send_email", req.model_dump(), {"error": str(e)}, "failed")
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=str(e))
+            supabase.table("agent_tool_calls").update({"status": "rejected"}).eq("id", req.batch_id).eq("user_id", uid).execute()
+        except Exception as e:
+            print(f"[reject_bulk_send] Error rejecting batch: {e}")
+    return {"status": "rejected", "batch_id": req.batch_id}
+
+@router.post("/emails/approve-bulk-send")
+def approve_bulk_send(req: ApproveBulkSendRequest):
+    from db.supabase_client import get_supabase, get_current_user_id
+    uid = get_current_user_id()
+    supabase = get_supabase()
+    if supabase and uid:
+        try:
+            supabase.table("agent_tool_calls").update({"status": "approved"}).eq("id", req.batch_id).eq("user_id", uid).eq("status", "pending_approval").execute()
+        except Exception as e:
+            print(f"[approve_bulk_send] Error approving batch: {e}")
+    return {"status": "approved", "batch_id": req.batch_id}
 
 class SubmitFormRequest(BaseModel):
     email_id: Optional[str] = None

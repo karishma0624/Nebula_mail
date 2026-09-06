@@ -6,15 +6,15 @@ from db.supabase_client import get_supabase
 # Model name for Gemini embeddings
 GEMINI_EMBEDDING_MODEL = "models/text-embedding-004"
 
-def get_embedding(text: str) -> Optional[List[float]]:
+def get_embedding(text: str, user_id: Optional[str] = None, request_id: Optional[str] = None) -> Optional[List[float]]:
     """
-    Generate embedding vector using Gemini.
+    Generate embedding vector using Gemini via shared in-process rate limiter.
     Returns a 768-dimensional vector matching the emails.embedding column.
     """
     if not settings.GEMINI_API_KEY:
         return None
 
-    try:
+    def _call_gemini():
         from google import genai
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         result = client.models.embed_content(
@@ -24,9 +24,19 @@ def get_embedding(text: str) -> Optional[List[float]]:
         )
         if result.embeddings and len(result.embeddings) > 0:
             return result.embeddings[0].values
+        return None
+
+    try:
+        from agent.rate_limiter import gemini_rate_limiter
+        return gemini_rate_limiter.execute_with_guard(
+            _call_gemini,
+            consumer_name="email_embeddings",
+            user_id=user_id,
+            request_id=request_id
+        )
     except Exception as e:
         print(f"[RAG] Notice generating embedding: {e}")
-    return None
+        return None
 
 def verify_embedding_dimension() -> int:
     """Verifies actual dimensionality returned by the model."""
@@ -68,11 +78,11 @@ def search_semantic_emails(query: str, user_id: str, limit: int = 5) -> List[Dic
         except Exception:
             pass
 
-    # Direct keyword fallback on Supabase if RPC is not available
-    if not results and supabase:
+    # Direct keyword fallback on agent_visible_emails if RPC is not available
+    if not results and supabase and user_id:
         try:
             from_match = re.search(r"from\s+([a-zA-Z0-9_.-]+)", query, re.IGNORECASE)
-            sb_q = supabase.table("emails").select("id, thread_id, sender, subject, snippet, body_text, received_at").order("received_at", desc=True)
+            sb_q = supabase.table("agent_visible_emails").select("id, thread_id, sender, subject, snippet, body_text, received_at").eq("user_id", user_id).order("received_at", desc=True)
             if from_match:
                 s_name = from_match.group(1).strip()
                 sb_res = sb_q.ilike("sender", f"%{s_name}%").limit(limit).execute()
@@ -133,6 +143,22 @@ def search_semantic_emails(query: str, user_id: str, limit: int = 5) -> List[Dic
                     list_res = client.list_messages(folder="inbox", query=" ".join(meaningful_words), max_results=limit)
                     messages = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
 
+                # Feature 1.2: Filter out restricted senders from agent retrieval
+                if supabase and user_id and messages:
+                    try:
+                        rs_res = supabase.table("restricted_senders").select("email_address").eq("user_id", user_id).execute()
+                        restricted_addrs = {r["email_address"].lower() for r in (rs_res.data or [])}
+                        if restricted_addrs:
+                            filtered_msgs = []
+                            for msg in messages:
+                                s_addr = msg.get("sender", "").lower()
+                                recips = [r.lower() for r in msg.get("recipients", [])]
+                                if not any(ra in s_addr or any(ra in rc for rc in recips) for ra in restricted_addrs):
+                                    filtered_msgs.append(msg)
+                            messages = filtered_msgs
+                    except Exception:
+                        pass
+
                 for msg in messages:
                     results.append({
                         "id": msg.get("id"),
@@ -166,6 +192,16 @@ def answer_grounded_rag(
         attachments = search_semantic_attachments(question, user_id, limit=2)
     except Exception as att_err:
         print(f"[RAG] Notice querying attachments: {att_err}")
+
+    # Section 1.5: Validate open_email against agent_visible_emails
+    if open_email and user_id:
+        supabase = get_supabase()
+        if supabase:
+            open_id = open_email.get("id") or open_email.get("email_id")
+            if open_id:
+                chk = supabase.table("agent_visible_emails").select("id").eq("id", open_id).eq("user_id", user_id).execute()
+                if not (chk.data and len(chk.data) > 0):
+                    open_email = None
 
     # Check open email for attachments on the fly
     if open_email:

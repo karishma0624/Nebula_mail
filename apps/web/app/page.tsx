@@ -12,6 +12,8 @@ import { ComposeForm } from '../components/mail/ComposeForm';
 import { FormFillModal } from '../components/mail/FormFillModal';
 import { AssistantPanel } from '../components/assistant/AssistantPanel';
 import { ConfirmSendModal } from '../components/assistant/ConfirmSendModal';
+import { ConfirmMeetingModal } from '../components/assistant/ConfirmMeetingModal';
+import { BulkSendConfirmModal } from '../components/assistant/BulkSendConfirmModal';
 
 const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
 
@@ -280,7 +282,13 @@ export default function MailApp() {
       {/* 4. Human-in-the-Loop Send Approval Modal */}
       <ConfirmSendModal />
 
-      {/* 5. Human-in-the-Loop Form Fill Approval Modal */}
+      {/* 5. Human-in-the-Loop Meeting Approval Modal */}
+      <ConfirmMeetingModal />
+
+      {/* 6. Human-in-the-Loop Bulk Send Approval Modal */}
+      <BulkSendConfirmModal />
+
+      {/* 7. Human-in-the-Loop Form Fill Approval Modal */}
       <FormFillModal />
     </main>
   );

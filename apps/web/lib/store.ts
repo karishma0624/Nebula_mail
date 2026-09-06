@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ViewType, Email, FilterCriteria, ComposeDraft, EmailCategory, CategoryStats } from './types';
+import { ViewType, Email, FilterCriteria, ComposeDraft, EmailCategory, CategoryStats, MeetingDraft, BulkSendDraft } from './types';
 
 interface MailState {
   isAuthenticated: boolean;
@@ -16,6 +16,14 @@ interface MailState {
   isLoadingEmails: boolean;
   isAssistantOpen: boolean;
   sendMode: 'confirm' | 'automatic';
+
+  // Meeting Confirmation State
+  meetingDraft: MeetingDraft | null;
+  isMeetingModalOpen: boolean;
+
+  // Bulk Send Confirmation State
+  bulkSendBatch: { batchId: string; draftIds: string[]; drafts: BulkSendDraft[] } | null;
+  isBulkSendModalOpen: boolean;
 
   // Pagination & Mailbox Stats
   currentPage: number;
@@ -53,6 +61,10 @@ interface MailState {
   setIsTypingCompose: (isTyping: boolean) => void;
   openConfirmModal: (draft: ComposeDraft) => void;
   closeConfirmModal: () => void;
+  openMeetingModal: (meeting: MeetingDraft) => void;
+  closeMeetingModal: () => void;
+  openBulkSendModal: (batch: { batchId: string; draftIds: string[]; drafts: BulkSendDraft[] }) => void;
+  closeBulkSendModal: () => void;
   setSendMode: (mode: 'confirm' | 'automatic') => void;
   toggleAssistant: () => void;
   setAssistantOpen: (open: boolean) => void;
@@ -96,6 +108,12 @@ export const useMailStore = create<MailState>((set, get) => ({
   isLoadingEmails: false,
   isAssistantOpen: true,
   sendMode: (typeof window !== 'undefined' ? (localStorage.getItem('nebula_send_mode') as 'confirm' | 'automatic') : 'confirm') || 'confirm',
+
+  meetingDraft: null,
+  isMeetingModalOpen: false,
+
+  bulkSendBatch: null,
+  isBulkSendModalOpen: false,
 
   currentPage: 1,
   nextPageToken: null,
@@ -211,25 +229,8 @@ export const useMailStore = create<MailState>((set, get) => ({
   setIsTypingCompose: (isTyping) => set({ isTypingCompose: isTyping }),
 
   openConfirmModal: (draft) => {
-    if (get().sendMode === 'automatic') {
-      const freshDraft = {
-        ...draft,
-        draft_id: draft.draft_id || ('draft-' + Date.now())
-      };
-      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-      fetch(`${apiUrl}/emails/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(freshDraft),
-      }).then(() => {
-        get().resetComposeDraft();
-        get().setView('sent');
-      }).catch((err) => {
-        console.error('Automatic send in openConfirmModal failed:', err);
-      });
-      return;
-    }
-
+    // FIX 0: Human-in-the-loop confirmation before every send is mandatory and non-negotiable.
+    // No code path may skip the confirmation modal, regardless of send_mode's value.
     set({
       draftToSend: {
         ...draft,
@@ -242,6 +243,26 @@ export const useMailStore = create<MailState>((set, get) => ({
   closeConfirmModal: () => set({
     isConfirmModalOpen: false,
     draftToSend: null
+  }),
+
+  openMeetingModal: (meeting) => set({
+    meetingDraft: meeting,
+    isMeetingModalOpen: true
+  }),
+
+  closeMeetingModal: () => set({
+    meetingDraft: null,
+    isMeetingModalOpen: false
+  }),
+
+  openBulkSendModal: (batch) => set({
+    bulkSendBatch: batch,
+    isBulkSendModalOpen: true
+  }),
+
+  closeBulkSendModal: () => set({
+    bulkSendBatch: null,
+    isBulkSendModalOpen: false
   }),
 
   setSendMode: (mode) => {

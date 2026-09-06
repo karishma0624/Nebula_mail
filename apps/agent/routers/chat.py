@@ -1,4 +1,5 @@
 import json
+import uuid
 import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -74,13 +75,15 @@ async def chat_endpoint(req: ChatRequest):
         except Exception as e:
             print(f"Error saving user message: {e}")
 
+    request_id = str(uuid.uuid4())
+
     async def event_generator():
         try:
             # Send conversation metadata immediately
             if conversation_id:
                 yield {
                     "event": "conversation",
-                    "data": json.dumps({"conversation_id": conversation_id, "title": title})
+                    "data": json.dumps({"conversation_id": conversation_id, "title": title, "request_id": request_id})
                 }
 
             # 4. Prepare initial state for LangGraph
@@ -92,7 +95,9 @@ async def chat_endpoint(req: ChatRequest):
                 "retry_count": 0,
                 "error": None,
                 "final_response": None,
-                "citations": []
+                "citations": [],
+                "request_id": request_id,
+                "user_id": user_id
             }
 
             # 5. Run graph asynchronously or through a thread pool
@@ -110,7 +115,7 @@ async def chat_endpoint(req: ChatRequest):
                 }
                 yield {
                     "event": "tool_call",
-                    "data": json.dumps(tool_data)
+                    "data": json.dumps(tool_data, default=str)
                 }
                 await asyncio.sleep(0.05)
 
@@ -119,7 +124,7 @@ async def chat_endpoint(req: ChatRequest):
             if citations:
                 yield {
                     "event": "citations",
-                    "data": json.dumps({"citations": citations})
+                    "data": json.dumps({"citations": citations}, default=str)
                 }
                 await asyncio.sleep(0.03)
 
@@ -140,15 +145,19 @@ async def chat_endpoint(req: ChatRequest):
                 "data": "[DONE]"
             }
 
-            # 10. Persist assistant message to database
+            # 10. Persist assistant message to database with PII redaction on tool_calls
             if supabase and user_id and conversation_id:
                 try:
+                    from agent.pii import redact_pii_recursive
+                    safe_tool_calls = redact_pii_recursive(tool_calls) if tool_calls else None
+                    if safe_tool_calls:
+                        safe_tool_calls = json.loads(json.dumps(safe_tool_calls, default=str))
                     supabase.table("messages").insert({
                         "conversation_id": conversation_id,
                         "user_id": user_id,
                         "role": "assistant",
                         "content": final_resp,
-                        "tool_calls": tool_calls if tool_calls else None,
+                        "tool_calls": safe_tool_calls,
                         "citations": citations if citations else None
                     }).execute()
                     # Update conversation timestamp

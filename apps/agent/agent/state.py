@@ -15,3 +15,5 @@ class AgentState(TypedDict):
     error: Optional[str]
     final_response: Optional[str]
     citations: Optional[List[Dict[str, Any]]]
+    request_id: Optional[str]
+    user_id: Optional[str]

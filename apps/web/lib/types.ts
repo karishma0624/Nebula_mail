@@ -122,3 +122,37 @@ export interface EmailListResponse {
   category_total?: number;
   category_unread?: number;
 }
+
+export interface RestrictedSender {
+  id: string;
+  user_id: string;
+  email_address: string;
+  label?: string | null;
+  created_at: string;
+}
+
+export interface MeetingDraft {
+  id: string;
+  user_id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  attendees: string[];
+  email_draft_id?: string | null;
+  meet_link?: string | null;
+  calendar_event_id?: string | null;
+  status: 'pending_approval' | 'approved' | 'created' | 'failed' | 'rejected';
+  created_at: string;
+  email_body_template?: string;
+  reply_to_id?: string | null;
+}
+
+export interface BulkSendDraft {
+  draft_id: string;
+  to: string | string[];
+  subject: string;
+  body: string;
+  thread_id?: string | null;
+  reply_to_id?: string | null;
+}
+

@@ -5,6 +5,8 @@ from config import settings
 from routers.emails import router as emails_router
 from routers.chat import router as chat_router
 from routers.webhooks import router as webhooks_router
+from routers.settings import router as settings_router
+from routers.calendar import router as calendar_router
 
 app = FastAPI(
     title="Nebula Mail API",
@@ -15,7 +17,7 @@ app = FastAPI(
 # CORS configuration for Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,6 +30,8 @@ from gmail.client import GmailNetworkError
 app.include_router(emails_router)
 app.include_router(chat_router)
 app.include_router(webhooks_router)
+app.include_router(settings_router)
+app.include_router(calendar_router)
 
 @app.exception_handler(GmailNetworkError)
 async def gmail_network_error_handler(request, exc: GmailNetworkError):

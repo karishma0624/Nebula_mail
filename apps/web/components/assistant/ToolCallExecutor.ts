@@ -195,28 +195,49 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
 
       const freshDraft = { draft_id, to, subject, body, thread_id, reply_to_id };
 
-      // In automatic send mode, dispatch immediately without opening review modal
-      if (store.sendMode === 'automatic') {
-        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-        try {
-          await fetch(`${apiUrl}/emails/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(freshDraft),
-          });
-          store.resetComposeDraft();
-          store.setView('sent');
-        } catch (e) {
-          console.error('Automatic send failed, opening confirmation modal as fallback:', e);
-          store.setComposeDraft(freshDraft);
-          store.openConfirmModal(freshDraft);
-        }
-        break;
-      }
-
-      // Update composeDraft directly to guarantee zero drift
+      // FIX 0: Human-in-the-loop confirmation before every send is mandatory and non-negotiable.
+      // Update composeDraft directly and open confirmation modal
       store.setComposeDraft(freshDraft);
       store.openConfirmModal(freshDraft);
+      break;
+    }
+
+    case 'prepare_meeting': {
+      // Step 1: Real database UUID from backend toolCall result or arguments (NEVER client-generated placeholders)
+      const res = (toolCall as any).result || {};
+      const realId = res.meeting_draft_id || res.id || args.meeting_draft_id || args.id || '';
+
+      const meeting = {
+        id: realId,
+        user_id: args.user_id || res.user_id || '',
+        title: args.title || res.title || 'Untitled Meeting',
+        start_time: args.start_time || res.start_time || new Date().toISOString(),
+        end_time: args.end_time || res.end_time || new Date(Date.now() + 30 * 60000).toISOString(),
+        attendees: args.attendees || res.attendees || [],
+        email_draft_id: args.email_draft_id || res.email_draft_id || null,
+        meet_link: args.meet_link || res.meet_link || null,
+        calendar_event_id: args.calendar_event_id || res.calendar_event_id || null,
+        status: args.status || res.status || 'pending_approval',
+        created_at: args.created_at || res.created_at || new Date().toISOString(),
+        email_body_template: args.email_body_template || res.email_body_template || '',
+        reply_to_id: args.reply_to_id || res.reply_to_id || null,
+      };
+      store.openMeetingModal(meeting);
+      break;
+    }
+
+    case 'prepare_bulk_send': {
+      const batchId = args.batch_id || ('batch-' + Date.now());
+      const draftIds = args.draft_ids || [];
+      const drafts = (args.drafts || []).map((d: any) => ({
+        draft_id: d.draft_id || d.id || '',
+        to: d.to || '',
+        subject: d.subject || '',
+        body: d.body || '',
+        thread_id: d.thread_id || null,
+        reply_to_id: d.reply_to_id || null,
+      }));
+      store.openBulkSendModal({ batchId, draftIds, drafts });
       break;
     }
 

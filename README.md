@@ -149,9 +149,41 @@ Verify these 6 exact test phrases in the Mail Copilot panel against your live co
 
 ---
 
+## Iteration 3: Security Boundaries, Reliability & Trade-offs
+
+### 1. Restricted Senders (Participant-Based, Message-Level Access Control)
+- **Structural DB Enforcement**: Agent queries retrieve strictly from `agent_visible_emails` and `agent_visible_attachments`. The exclusion criteria check both `sender` and `recipients` case-insensitively with trimmed whitespace normalization.
+- **Trade-off (Message-level vs Thread-level)**: Filtering is applied at the individual **message level**, not thread level. If a confidential address appears on only one message within an otherwise visible thread, only that specific message is excluded from the agent's context while the remainder of the thread stays visible. This allows the assistant to answer general thread questions without leaking confidential messages.
+- **Plain Mail Client Isolation**: Endpoints powering the user's direct inbox views (`/emails/list`, `/emails/stats`) bypass `agent_visible_emails` and read raw email records directly so users never have their own inbox artificially censored.
+- **UI Context Bypass Prevention**: When an email is open in the plain mail UI (`ui_context.open_email`), any tool referencing that email re-validates the ID against `agent_visible_emails` for the authenticated user before executing. If restricted, the tool immediately aborts with: *"That contact is marked confidential — I can't access or act on this email."* and records a rejected tool call.
+
+### 2. Google Meet Scheduling & Crash-Safe Calendar Idempotency
+- **Human-in-the-Loop Barrier**: `prepare_meeting` only creates a draft in `meeting_drafts` with status `pending_approval`. No Google Calendar API calls occur during tool execution or LLM planning.
+- **Atomic Claim & Deterministic Event ID**: `POST /calendar/confirm_meeting` atomically claims the meeting draft (`status='pending_approval' -> 'approved'`) and generates a deterministic Google Calendar Event ID (`meet{meeting_draft_id[:28]}`). Even if double-clicked or interrupted by a process crash, duplicate Calendar events are impossible.
+- **Failure Isolation**: If Google Calendar event creation succeeds but the subsequent attendee invite email fails to send, the Calendar event is preserved with status `created`, and the email failure is logged separately without rolling back or creating duplicate meetings.
+
+### 3. Bulk Send Backend-Enforced Approval
+- **Backend Authorization Boundary**: The frontend `BulkSendConfirmModal` is only an interface. `POST /emails/bulk_send` independently verifies that every submitted draft belongs to the authenticated user and was explicitly approved through `prepare_bulk_send`.
+- **One-Time-Use Consumption**: Bulk approval is atomically consumed upon execution. Duplicate requests, unapproved batches, or cross-user draft IDs are rejected with zero Gmail send API calls.
+- **Batch Caps & Partial Recovery**: Batches are strictly capped at 20 drafts. Batches exceeding 20 are rejected with `input_error`. If a single email in an approved batch fails, the loop logs the failure and continues dispatching the remaining approved drafts.
+
+### 4. Shared In-Process Gemini Rate Limiting
+- **Zero New Infrastructure**: Avoids Redis or external brokers by using an in-process thread-safe token bucket shared across chat completions, email embeddings, and attachment embeddings.
+- **Bounded Backoff**: Automatically handles Gemini HTTP 429 rate limits with bounded exponential backoff (1s -> 2s -> 4s) before gracefully falling back with a user-friendly notice.
+
+### 5. PII-Safe Recursive Logging
+- **Automated Deep Redaction**: `pii.py` recursively scrubs email bodies, subjects, and templates across `agent_tool_calls.arguments`, `agent_tool_calls.result`, `messages.tool_calls`, and `messages.tool_results`, transforming them into safe length and 40-character preview metadata: `{"length": N, "preview": "..."}`.
+- **Error Context Sanitization**: `agent_errors.raw_context` captures only high-level identifiers, enum states, and string lengths, preventing personal data leaks into audit logs.
+
+### 6. Send Mode Deprecation Notice
+- `users.send_mode`: The `send_mode='automatic'` option is formally deprecated and neutralized. Human-in-the-loop confirmation is strictly mandatory and non-negotiable across all paths (single send, bulk send, and meeting invites).
+
+---
+
 ## What I'd Improve with More Time
 
 - **Offline Draft Syncing**: Cache drafts in IndexedDB with optimistic local updates.
 - **Rich Text & Attachments**: Integrate TipTap rich-text editor and drag-and-drop Gmail attachments.
 - **Email Categorization AI**: Automatic categorization into Primary, Social, and Updates using background workers.
 - **Bi-directional Webhook Push**: Deploy ngrok or cloud runner during CI/CD to demonstrate live Pub/Sub push in ephemeral preview environments.
+

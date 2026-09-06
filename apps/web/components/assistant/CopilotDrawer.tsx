@@ -21,6 +21,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../lib/types';
+import { RestrictedSenders } from '../settings/RestrictedSenders';
 
 const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
 
@@ -510,6 +511,11 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
                   <option value="fr-FR">Français (French)</option>
                   <option value="de-DE">Deutsch (German)</option>
                 </select>
+              </div>
+
+              {/* Confidential Contacts Section (Feature 1) */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+                <RestrictedSenders />
               </div>
             </div>
           )}
