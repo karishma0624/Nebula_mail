@@ -362,6 +362,7 @@ To ensure rock-solid stability and zero regressions under hiring task evaluation
 5. **Multi-Provider LLM Failover & Fallback**: Implement automatic runtime fallback from Google Gemini to secondary providers (e.g. Groq with Llama 3.3 or Anthropic Claude) when free-tier HTTP 429 quota exhaustion persists after the 3 backoff attempts, ensuring high availability.
 6. **Full Multi-Message Accordion Thread Rendering**: Extend the current single-email detail view into an interactive accordion thread view that clusters all messages sharing a `thread_id`, visualizes chronological email progression, and collapses intermediate replies.
 7. **Rich Text Formatting & Attachment Upload**: Upgrade the compose drawer from plain text to a rich WYSIWYG editor (such as TipTap or Lexical) with formatting controls and drag-and-drop file attachment uploads mapped directly to Gmail API MIME attachments.
+8. **Langfuse Observability & Reflection Tracing with PII Masking**: Integrate Langfuse telemetry to trace the complete LangGraph agent workflow (Planner decisions, tool executions, reflection loops, token consumption, and latency) with automated reflection masking hooks to ensure confidential email bodies, recipient addresses, and sensitive user data are masked prior to ingestion by external observability dashboards.
 
 ---
 
