@@ -19,6 +19,9 @@ import { LogoutModal } from '../components/layout/LogoutModal';
 const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
 
 export default function MailApp() {
+  if (typeof window !== 'undefined') {
+    (window as any).mailStore = useMailStore;
+  }
   const [networkError, setNetworkError] = React.useState<string | null>(null);
   const { 
     isAuthenticated, 
