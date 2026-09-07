@@ -1,18 +1,25 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
 from db.supabase_client import get_supabase, ensure_default_user_id
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+def _resolve_user_id(request: Optional[Request]) -> Optional[str]:
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    if session and session.get("user_id"):
+        return session["user_id"]
+    return ensure_default_user_id()
+
 class AddRestrictedSenderRequest(BaseModel):
     email_address: str
     label: Optional[str] = None
 
 @router.get("/restricted-senders")
-def list_restricted_senders():
+def list_restricted_senders(request: Request = None):
     """List all restricted senders for the currently authenticated user."""
-    user_id = ensure_default_user_id()
+    user_id = _resolve_user_id(request)
     supabase = get_supabase()
     if not supabase or not user_id:
         return []
@@ -29,9 +36,9 @@ def list_restricted_senders():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/restricted-senders")
-def add_restricted_sender(req: AddRestrictedSenderRequest):
+def add_restricted_sender(req: AddRestrictedSenderRequest, request: Request = None):
     """Add a new restricted confidential email address for the authenticated user."""
-    user_id = ensure_default_user_id()
+    user_id = _resolve_user_id(request)
     supabase = get_supabase()
     if not supabase or not user_id:
         raise HTTPException(status_code=500, detail="Database or user context unavailable")
@@ -58,9 +65,9 @@ def add_restricted_sender(req: AddRestrictedSenderRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/restricted-senders/{sender_id}")
-def delete_restricted_sender(sender_id: str):
+def delete_restricted_sender(sender_id: str, request: Request = None):
     """Remove a restricted confidential email address, strictly scoped to the authenticated user."""
-    user_id = ensure_default_user_id()
+    user_id = _resolve_user_id(request)
     supabase = get_supabase()
     if not supabase or not user_id:
         raise HTTPException(status_code=500, detail="Database or user context unavailable")

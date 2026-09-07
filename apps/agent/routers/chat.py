@@ -1,7 +1,7 @@
 import json
 import uuid
 import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 from sse_starlette.sse import EventSourceResponse
@@ -13,14 +13,21 @@ from db.supabase_client import get_supabase, ensure_default_user_id
 
 router = APIRouter(tags=["chat"])
 
+def _resolve_user_id(request: Optional[Request]) -> Optional[str]:
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    if session and session.get("user_id"):
+        return session["user_id"]
+    return ensure_default_user_id()
+
 class ChatRequest(BaseModel):
     message: str
     ui_context: Dict[str, Any] = {}
     conversation_id: Optional[str] = None
 
 @router.post("/chat")
-async def chat_endpoint(req: ChatRequest):
-    user_id = ensure_default_user_id()
+async def chat_endpoint(req: ChatRequest, request: Request = None):
+    user_id = _resolve_user_id(request)
     supabase = get_supabase()
 
     # 1. Resolve conversation_id and verify user-scoped ownership
@@ -185,8 +192,8 @@ async def chat_endpoint(req: ChatRequest):
 
 
 @router.get("/conversations")
-def list_conversations():
-    user_id = ensure_default_user_id()
+def list_conversations(request: Request = None):
+    user_id = _resolve_user_id(request)
     if not user_id:
         return []
     supabase = get_supabase()
@@ -201,8 +208,8 @@ def list_conversations():
 
 
 @router.get("/conversations/{conversation_id}")
-def get_conversation(conversation_id: str):
-    user_id = ensure_default_user_id()
+def get_conversation(conversation_id: str, request: Request = None):
+    user_id = _resolve_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
     supabase = get_supabase()
@@ -221,8 +228,8 @@ def get_conversation(conversation_id: str):
 
 
 @router.delete("/conversations/{conversation_id}")
-def delete_conversation(conversation_id: str):
-    user_id = ensure_default_user_id()
+def delete_conversation(conversation_id: str, request: Request = None):
+    user_id = _resolve_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
     supabase = get_supabase()
@@ -238,8 +245,8 @@ def delete_conversation(conversation_id: str):
 
 
 @router.delete("/conversations")
-def clear_conversations():
-    user_id = ensure_default_user_id()
+def clear_conversations(request: Request = None):
+    user_id = _resolve_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
     supabase = get_supabase()
@@ -256,8 +263,8 @@ class FeedbackRequest(BaseModel):
     conversation_id: Optional[str] = None
 
 @router.post("/feedback")
-def submit_feedback(req: FeedbackRequest):
-    user_id = ensure_default_user_id()
+def submit_feedback(req: FeedbackRequest, request: Request = None):
+    user_id = _resolve_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
     supabase = get_supabase()
@@ -280,13 +287,13 @@ class EditMessageRequest(BaseModel):
     new_content: str
 
 @router.post("/conversations/{conversation_id}/edit-message")
-def edit_conversation_message(conversation_id: str, req: EditMessageRequest):
+def edit_conversation_message(conversation_id: str, req: EditMessageRequest, request: Request = None):
     """
     Section 24: Edit a user message in a conversation.
     Replaces that message's stored content and discards/deletes all subsequent messages,
     so re-running produces a fresh continuation without duplicates.
     """
-    user_id = ensure_default_user_id()
+    user_id = _resolve_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
     supabase = get_supabase()

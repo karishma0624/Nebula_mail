@@ -22,8 +22,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../lib/types';
 import { RestrictedSenders } from '../settings/RestrictedSenders';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 
 interface ConversationItem {
   id: string;
@@ -84,7 +83,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
       setPreferredLanguage(storedLang);
 
       // Load user send_mode preference
-      fetch(`${AGENT_API_URL}/user/settings`)
+      authFetch(`${AGENT_API_URL}/user/settings`)
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (data && data.send_mode) setSendMode(data.send_mode);
@@ -106,7 +105,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const handleSendModeChange = async (mode: 'confirm' | 'automatic') => {
     setSendMode(mode);
     try {
-      await fetch(`${AGENT_API_URL}/user/settings`, {
+      await authFetch(`${AGENT_API_URL}/user/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ send_mode: mode }),
@@ -119,7 +118,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const loadConversations = async () => {
     setIsLoadingHistory(true);
     try {
-      const res = await fetch(`${AGENT_API_URL}/conversations`);
+      const res = await authFetch(`${AGENT_API_URL}/conversations`);
       if (res.ok) {
         const data = await res.json();
         setConversations(data || []);
@@ -160,7 +159,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
 
   const handleSelectConv = async (convId: string) => {
     try {
-      const res = await fetch(`${AGENT_API_URL}/conversations/${convId}`);
+      const res = await authFetch(`${AGENT_API_URL}/conversations/${convId}`);
       if (res.ok) {
         const data = await res.json();
         setActiveConversationId(convId);
@@ -185,7 +184,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const handleDeleteConv = async (convId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await fetch(`${AGENT_API_URL}/conversations/${convId}`, { method: 'DELETE' });
+      await authFetch(`${AGENT_API_URL}/conversations/${convId}`, { method: 'DELETE' });
       setConversations((prev) => prev.filter((c) => c.id !== convId));
       if (activeConversationId === convId) {
         setActiveConversationId(null);
@@ -198,7 +197,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
   const handleClearAllHistory = async () => {
     if (!confirm('Are you sure you want to clear all conversation memory?')) return;
     try {
-      await fetch(`${AGENT_API_URL}/conversations`, { method: 'DELETE' });
+      await authFetch(`${AGENT_API_URL}/conversations`, { method: 'DELETE' });
       setConversations([]);
       setActiveConversationId(null);
     } catch (err) {
@@ -210,7 +209,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({
     if (!feedbackText.trim()) return;
     setIsSubmittingFeedback(true);
     try {
-      await fetch(`${AGENT_API_URL}/feedback`, {
+      await authFetch(`${AGENT_API_URL}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

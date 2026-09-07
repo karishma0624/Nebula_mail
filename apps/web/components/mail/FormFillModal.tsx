@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useMailStore } from '../../lib/store';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 import { 
   X, 
   Sparkles, 
@@ -12,8 +13,6 @@ import {
   ExternalLink,
   Loader2 
 } from 'lucide-react';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
 
 export const FormFillModal: React.FC = () => {
   const { 
@@ -69,7 +68,7 @@ export const FormFillModal: React.FC = () => {
         ? `url=${encodeURIComponent(url)}&email_id=${formModalEmail.id}`
         : `email_id=${formModalEmail.id}`;
 
-      fetch(`${AGENT_API_URL}/forms/extract?${queryParam}`)
+      authFetch(`${AGENT_API_URL}/forms/extract?${queryParam}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data) {
@@ -137,7 +136,7 @@ export const FormFillModal: React.FC = () => {
     setStatusMessage(null);
 
     try {
-      const res = await fetch(`${AGENT_API_URL}/forms/submit`, {
+      const res = await authFetch(`${AGENT_API_URL}/forms/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,7 +177,7 @@ export const FormFillModal: React.FC = () => {
 
   const handleReject = async () => {
     try {
-      await fetch(`${AGENT_API_URL}/forms/submit`, {
+      await authFetch(`${AGENT_API_URL}/forms/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

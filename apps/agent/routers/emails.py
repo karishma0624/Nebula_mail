@@ -1,6 +1,6 @@
 import time
 import uuid
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, Union
 from config import settings
@@ -44,10 +44,31 @@ class ApproveBulkSendRequest(BaseModel):
 class RejectBulkSendRequest(BaseModel):
     batch_id: str
 
-def get_current_gmail_client() -> GmailClient:
+def get_current_gmail_client(request: Optional[Request] = None, user_id: Optional[str] = None) -> GmailClient:
     global _cached_credentials
-    if not _cached_credentials:
-        # Try fetching from Supabase if a user exists
+    from auth.session import get_session_from_request, get_user_credentials
+
+    # 1. Direct user_id resolution
+    target_user_id = user_id
+
+    # 2. Extract from request session token
+    if not target_user_id and request is not None:
+        session = get_session_from_request(request)
+        if session and session.get("user_id"):
+            target_user_id = session["user_id"]
+
+    # 3. Retrieve user-isolated credentials
+    if target_user_id:
+        creds = get_user_credentials(target_user_id)
+        if creds:
+            return GmailClient(credentials=creds)
+
+    # 4. Fallback to process-level credentials (for local dev / unit tests)
+    if _cached_credentials:
+        return GmailClient(credentials=_cached_credentials)
+
+    # 5. Fallback fetching from Supabase in dev/test environment
+    if settings.ENVIRONMENT != "production":
         supabase = get_supabase()
         if supabase:
             try:
@@ -60,20 +81,36 @@ def get_current_gmail_client() -> GmailClient:
             except Exception as e:
                 print(f"Failed to lookup token from Supabase: {e}")
 
-        raise HTTPException(
-            status_code=401,
-            detail="Gmail account is not connected. Please complete Google OAuth first."
-        )
-
-    return GmailClient(credentials=_cached_credentials)
+    raise HTTPException(
+        status_code=401,
+        detail="Gmail account is not connected. Please complete Google OAuth first."
+    )
 
 @router.get("/auth/status")
-def get_auth_status():
+def get_auth_status(request: Request = None):
     global _cached_credentials, _cached_user_email
+    from auth.session import get_session_from_request, get_user_credentials
+
+    # 1. Per-user session check if request carries session token
+    if request is not None:
+        session = get_session_from_request(request)
+        if session and session.get("user_id"):
+            uid = session["user_id"]
+            email = session.get("email")
+            creds = get_user_credentials(uid)
+            is_authenticated = creds is not None
+            return {
+                "authenticated": is_authenticated,
+                "email": email if is_authenticated else None,
+                "user_id": uid if is_authenticated else None,
+                "oauth_configured": bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET)
+            }
+
+    # 2. Single-user / test fallback
     authenticated = _cached_credentials is not None
     email = _cached_user_email
 
-    if not authenticated:
+    if not authenticated and settings.ENVIRONMENT != "production":
         supabase = get_supabase()
         if supabase:
             try:
@@ -97,9 +134,9 @@ def get_auth_status():
 class UserSettingsRequest(BaseModel):
     send_mode: str = "confirm"
 
-def get_user_settings():
+def get_user_settings(user_id: Optional[str] = None):
     from db.supabase_client import get_supabase, get_current_user_id
-    uid = get_current_user_id()
+    uid = user_id or get_current_user_id()
     supabase = get_supabase()
     if supabase and uid:
         try:
@@ -111,16 +148,21 @@ def get_user_settings():
     return {"send_mode": "confirm"}
 
 @router.get("/user/settings")
-def fetch_user_settings_route():
+def fetch_user_settings_route(request: Request = None):
     import routers.emails as em_mod
-    return em_mod.get_user_settings()
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    user_id = session.get("user_id") if session else None
+    return em_mod.get_user_settings(user_id=user_id)
 
 @router.post("/user/settings")
-def update_user_settings(req: UserSettingsRequest):
+def update_user_settings(req: UserSettingsRequest, request: Request = None):
     if req.send_mode not in ["confirm", "automatic"]:
         raise HTTPException(status_code=400, detail="Invalid send_mode. Must be 'confirm' or 'automatic'")
+    from auth.session import get_session_from_request
     from db.supabase_client import get_supabase, get_current_user_id
-    uid = get_current_user_id()
+    session = get_session_from_request(request) if request is not None else None
+    uid = (session.get("user_id") if session else None) or get_current_user_id()
     supabase = get_supabase()
     if supabase and uid:
         try:
@@ -161,6 +203,7 @@ def handle_oauth_callback(code: str = Query(...), state: Optional[str] = Query(N
     _cached_credentials = creds
 
     # Get user's email address from Google userinfo API
+    user_email = "user@example.com"
     try:
         oauth2_service = build('oauth2', 'v2', credentials=creds)
         user_info = oauth2_service.userinfo().get().execute()
@@ -172,12 +215,14 @@ def handle_oauth_callback(code: str = Query(...), state: Optional[str] = Query(N
         _cached_user_email = user_email
 
     # Persist in Supabase if configured
+    user_id = str(uuid.uuid4())
     supabase = get_supabase()
     if supabase:
         try:
             # Upsert user
             user_rec = supabase.table("users").upsert({"email": user_email}, on_conflict="email").execute()
-            user_id = user_rec.data[0]["id"] if user_rec.data else None
+            if user_rec.data and len(user_rec.data) > 0:
+                user_id = user_rec.data[0]["id"]
             if user_id:
                 supabase.table("oauth_tokens").upsert({
                     "user_id": user_id,
@@ -190,30 +235,42 @@ def handle_oauth_callback(code: str = Query(...), state: Optional[str] = Query(N
         except Exception as err:
             print(f"Notice: Supabase save skipped or failed: {err}")
 
-    return {"status": "success", "email": _cached_user_email}
+    # Register in per-user session cache and create signed multi-user session token
+    from auth.session import set_user_credentials, create_session_token
+    set_user_credentials(user_id, creds)
+    session_token = create_session_token(user_id, user_email)
+
+    return {
+        "status": "success", 
+        "session_token": session_token,
+        "email": user_email,
+        "user_id": user_id
+    }
 
 @router.post("/auth/logout")
 @router.get("/auth/logout")
-def logout_user():
+def logout_user(request: Request = None):
     global _cached_credentials, _cached_user_email
+    from auth.session import get_session_from_request, clear_user_session
+    if request is not None:
+        session = get_session_from_request(request)
+        if session and session.get("user_id"):
+            clear_user_session(session["user_id"])
+
+    # Reset single-user / test fallback credentials
     _cached_credentials = None
     _cached_user_email = None
-    supabase = get_supabase()
-    if supabase:
-        try:
-            supabase.table("oauth_tokens").delete().neq("provider", "").execute()
-        except Exception as err:
-            print(f"Notice: Supabase token deletion on logout skipped/failed: {err}")
     return {"status": "success", "message": "Successfully logged out"}
 
 @router.get("/emails/stats")
-def get_mailbox_stats():
+def get_mailbox_stats(request: Request = None):
     """Get accurate total and unread counts for inbox, sent, and all Gmail categories."""
-    client = get_current_gmail_client()
+    client = get_current_gmail_client(request=request)
     return client.get_all_mailbox_stats()
 
 @router.get("/emails/list")
 def list_emails(
+    request: Request = None,
     folder: str = Query("inbox", enum=["inbox", "sent", "draft"]),
     q: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
@@ -221,7 +278,7 @@ def list_emails(
     page_token: Optional[str] = Query(None),
     unread_only: bool = Query(False)
 ):
-    client = get_current_gmail_client()
+    client = get_current_gmail_client(request=request)
     
     clean_q = q.strip() if isinstance(q, str) and q.strip() else None
     clean_folder = folder if isinstance(folder, str) and folder in ["inbox", "sent", "draft"] else "inbox"
@@ -309,8 +366,8 @@ def list_emails(
     return response_data
 
 @router.get("/emails/{email_id}")
-def get_email_detail(email_id: str):
-    client = get_current_gmail_client()
+def get_email_detail(email_id: str, request: Request = None):
+    client = get_current_gmail_client(request=request)
     msg = client.get_message(email_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Email not found")
@@ -319,8 +376,10 @@ def get_email_detail(email_id: str):
     if msg.get("attachments"):
         try:
             from agent.attachments import index_email_attachment
+            from auth.session import get_session_from_request
             from db.supabase_client import get_current_user_id
-            user_id = get_current_user_id()
+            session = get_session_from_request(request) if request is not None else None
+            user_id = (session.get("user_id") if session else None) or get_current_user_id()
             if user_id:
                 for att in msg["attachments"]:
                     fn = att.get("filename", "")
@@ -344,8 +403,8 @@ def get_email_detail(email_id: str):
     return msg
 
 @router.post("/emails/draft")
-def create_draft(req: DraftEmailRequest):
-    client = get_current_gmail_client()
+def create_draft(req: DraftEmailRequest, request: Request = None):
+    client = get_current_gmail_client(request=request)
     draft = client.create_draft(
         to=req.to,
         subject=req.subject,
@@ -385,7 +444,8 @@ def _send_single_email(
     reply_to_id: Optional[str] = None,
     draft_id: Optional[str] = None,
     user_id: Optional[str] = None,
-    request_id: Optional[str] = None
+    request_id: Optional[str] = None,
+    request: Optional[Request] = None
 ) -> Dict[str, Any]:
     """
     Shared internal core function used by BOTH /emails/send and /emails/bulk_send.
@@ -395,9 +455,11 @@ def _send_single_email(
     from agent.tools import log_tool_audit
     from agent.errors import log_agent_error
     from gmail.client import GmailNetworkError
+    from auth.session import get_session_from_request
 
-    uid = user_id or get_current_user_id()
-    client = get_current_gmail_client()
+    session = get_session_from_request(request) if request is not None else None
+    uid = user_id or (session.get("user_id") if session else None) or get_current_user_id()
+    client = get_current_gmail_client(request=request, user_id=uid)
 
     to_str = ", ".join(to) if isinstance(to, list) else to
     audit_args = {
@@ -439,14 +501,16 @@ def _send_single_email(
             raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/emails/send")
-def send_email(req: SendEmailRequest):
+def send_email(req: SendEmailRequest, request: Request = None):
     """
     POST /emails/send { draft_id, to, subject, body, thread_id?, reply_to_id? }
     Mandatory backend authorization boundary:
     Requires human confirmation before every send. Direct sends without draft approval are rejected.
     """
     from db.supabase_client import get_supabase, get_current_user_id
-    uid = get_current_user_id()
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    uid = (session.get("user_id") if session else None) or get_current_user_id()
     supabase = get_supabase()
 
     if not req.draft_id:
@@ -497,11 +561,12 @@ def send_email(req: SendEmailRequest):
         thread_id=req.thread_id,
         reply_to_id=req.reply_to_id,
         draft_id=req.draft_id,
-        user_id=uid
+        user_id=uid,
+        request=request
     )
 
 @router.post("/emails/bulk_send")
-def bulk_send_emails(req: BulkSendRequest):
+def bulk_send_emails(req: BulkSendRequest, request: Request = None):
     """
     POST /emails/bulk_send { batch_id, draft_ids, drafts? }
     Mandatory backend authorization boundary:
@@ -517,7 +582,9 @@ def bulk_send_emails(req: BulkSendRequest):
     """
     from db.supabase_client import get_supabase, get_current_user_id
     from agent.errors import log_agent_error
-    uid = get_current_user_id()
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    uid = (session.get("user_id") if session else None) or get_current_user_id()
     supabase = get_supabase()
 
     if not req.batch_id or not req.draft_ids:
@@ -603,7 +670,8 @@ def bulk_send_emails(req: BulkSendRequest):
                 thread_id=thread_id,
                 reply_to_id=reply_to_id,
                 draft_id=d_id,
-                user_id=uid
+                user_id=uid,
+                request=request
             )
             sent.append({"draft_id": d_id, "result": res.get("result")})
         except Exception as exc:
@@ -617,9 +685,11 @@ def bulk_send_emails(req: BulkSendRequest):
     }
 
 @router.post("/emails/reject-bulk-send")
-def reject_bulk_send(req: RejectBulkSendRequest):
+def reject_bulk_send(req: RejectBulkSendRequest, request: Request = None):
     from db.supabase_client import get_supabase, get_current_user_id
-    uid = get_current_user_id()
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    uid = (session.get("user_id") if session else None) or get_current_user_id()
     supabase = get_supabase()
     if supabase and uid:
         try:
@@ -629,9 +699,11 @@ def reject_bulk_send(req: RejectBulkSendRequest):
     return {"status": "rejected", "batch_id": req.batch_id}
 
 @router.post("/emails/approve-bulk-send")
-def approve_bulk_send(req: ApproveBulkSendRequest):
+def approve_bulk_send(req: ApproveBulkSendRequest, request: Request = None):
     from db.supabase_client import get_supabase, get_current_user_id
-    uid = get_current_user_id()
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    uid = (session.get("user_id") if session else None) or get_current_user_id()
     supabase = get_supabase()
     if supabase and uid:
         try:
@@ -647,9 +719,11 @@ class SubmitFormRequest(BaseModel):
     action: str = "submit"
 
 @router.post("/forms/submit")
-def submit_form(req: SubmitFormRequest):
+def submit_form(req: SubmitFormRequest, request: Request = None):
     from db.supabase_client import ensure_default_user_id
-    user_id = ensure_default_user_id()
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    user_id = (session.get("user_id") if session else None) or ensure_default_user_id()
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
     supabase = get_supabase()
@@ -745,7 +819,7 @@ def parse_google_form(url: str) -> Dict[str, Any]:
 
 
 @router.get("/forms/extract")
-def extract_form_fields(url: Optional[str] = None, email_id: Optional[str] = None):
+def extract_form_fields(url: Optional[str] = None, email_id: Optional[str] = None, request: Request = None):
     """
     Extracts real form fields from Google Forms or attached links.
     Returns question labels, input types, and pre-fill URLs.
@@ -756,7 +830,7 @@ def extract_form_fields(url: Optional[str] = None, email_id: Optional[str] = Non
     target_url = url
     if not target_url and email_id:
         try:
-            cl = get_current_gmail_client()
+            cl = get_current_gmail_client(request=request)
             if cl:
                 msg = cl.get_message(email_id)
                 if msg:

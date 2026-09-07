@@ -15,8 +15,7 @@ import { ConfirmSendModal } from '../components/assistant/ConfirmSendModal';
 import { ConfirmMeetingModal } from '../components/assistant/ConfirmMeetingModal';
 import { BulkSendConfirmModal } from '../components/assistant/BulkSendConfirmModal';
 import { LogoutModal } from '../components/layout/LogoutModal';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+import { authFetch, getSessionToken, setSessionToken, AGENT_API_URL } from '../lib/api';
 
 export default function MailApp() {
   if (typeof window !== 'undefined') {
@@ -38,16 +37,38 @@ export default function MailApp() {
     clearSearch
   } = useMailStore();
 
-  // Check backend auth status
+  // Extract session token from OAuth redirect query parameters if present
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('session_token');
+      const urlEmail = params.get('email');
+      if (urlToken) {
+        setSessionToken(urlToken);
+        if (urlEmail) {
+          setAuthenticated(true, urlEmail);
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, [setAuthenticated]);
+
+  // Check backend auth status with session token
   const checkAuthStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${AGENT_API_URL}/auth/status`);
+      const res = await authFetch(`${AGENT_API_URL}/auth/status`);
       if (res.ok) {
         const data = await res.json();
         if (data.authenticated) {
           setAuthenticated(true, data.email || 'User');
           return true;
+        } else {
+          setSessionToken(null);
+          setAuthenticated(false);
         }
+      } else if (res.status === 401) {
+        setSessionToken(null);
+        setAuthenticated(false);
       }
     } catch (e) {
       console.warn('Unable to connect to backend auth service:', e);
@@ -59,7 +80,7 @@ export default function MailApp() {
   const fetchMailboxStats = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
-      const res = await fetch(`${AGENT_API_URL}/emails/stats`);
+      const res = await authFetch(`${AGENT_API_URL}/emails/stats`);
       if (res.ok) {
         const data = await res.json();
         setMailboxStats({
@@ -136,7 +157,7 @@ export default function MailApp() {
         url += `&page_token=${encodeURIComponent(pageToken)}`;
       }
 
-      const res = await fetch(url);
+      const res = await authFetch(url);
       if (res.ok) {
         setNetworkError(null);
         const data = await res.json();
@@ -147,6 +168,9 @@ export default function MailApp() {
           data.total_count, 
           data.unread_count
         );
+      } else if (res.status === 401) {
+        setSessionToken(null);
+        setAuthenticated(false);
       } else {
         const errData = await res.json().catch(() => ({}));
         if (res.status === 502 || res.status === 503 || errData?.detail?.error === 'gmail_unreachable' || errData?.error === 'gmail_unreachable') {

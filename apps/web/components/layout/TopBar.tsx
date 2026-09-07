@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, RefreshCw, Sparkles, Filter, CheckCircle2, AlertCircle, Sun, Moon, LogOut, LogIn, ChevronDown } from 'lucide-react';
 import { useMailStore } from '../../lib/store';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 
 interface TopBarProps {
   onRefresh?: () => void;
@@ -90,10 +91,9 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
       return;
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
     setLoadingEmails(true);
     try {
-      const res = await fetch(`${apiUrl}/emails/list?q=${encodeURIComponent(query)}&limit=25`);
+      const res = await authFetch(`${AGENT_API_URL}/emails/list?q=${encodeURIComponent(query)}&limit=25`);
       if (res.ok) {
         const data = await res.json();
         setSearchResults(

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useMailStore } from '../../lib/store';
 import { ShieldAlert, Send, X, Check, AlertCircle } from 'lucide-react';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 
 export const ConfirmSendModal: React.FC = () => {
   const { 
@@ -27,8 +28,7 @@ export const ConfirmSendModal: React.FC = () => {
     setErrorMsg(null);
     try {
       console.log(`[ConfirmSendModal] Firing /emails/send with live draft_id=${activeDraft.draft_id}, to=${activeDraft.to}, subject='${activeDraft.subject}', body='${activeDraft.body}'`);
-      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/emails/send`, {
+      const response = await authFetch(`${AGENT_API_URL}/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -60,8 +60,7 @@ export const ConfirmSendModal: React.FC = () => {
   const handleCancel = () => {
     const activeDraft = useMailStore.getState().draftToSend;
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-      fetch(`${apiUrl}/emails/reject-send`, {
+      authFetch(`${AGENT_API_URL}/emails/reject-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

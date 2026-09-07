@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useMailStore } from '../../lib/store';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 import { ShieldAlert, Send, X, Check, AlertCircle, Mail, Layers, CheckCircle2, XCircle } from 'lucide-react';
 
 export const BulkSendConfirmModal: React.FC = () => {
@@ -27,8 +28,7 @@ export const BulkSendConfirmModal: React.FC = () => {
     setIsSending(true);
     setErrorMsg(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/emails/bulk_send`, {
+      const response = await authFetch(`${AGENT_API_URL}/emails/bulk_send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -64,8 +64,7 @@ export const BulkSendConfirmModal: React.FC = () => {
 
   const handleCancel = () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-      fetch(`${apiUrl}/emails/reject-bulk-send`, {
+      authFetch(`${AGENT_API_URL}/emails/reject-bulk-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

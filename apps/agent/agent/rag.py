@@ -102,7 +102,7 @@ def search_semantic_emails(query: str, user_id: str, limit: int = 5) -> List[Dic
     if not results:
         try:
             from routers.emails import get_current_gmail_client
-            client = get_current_gmail_client()
+            client = get_current_gmail_client(user_id=user_id)
             if client:
                 stopwords = {
                     "which", "what", "where", "who", "how", "when", "why", "is", "are", 
@@ -210,7 +210,7 @@ def answer_grounded_rag(
         if not open_atts and open_id:
             try:
                 from routers.emails import get_current_gmail_client
-                cl = get_current_gmail_client()
+                cl = get_current_gmail_client(user_id=user_id)
                 full_msg = cl.get_message(open_id)
                 if full_msg and full_msg.get("attachments"):
                     open_atts = full_msg["attachments"]
@@ -224,7 +224,7 @@ def answer_grounded_rag(
                     try:
                         from routers.emails import get_current_gmail_client
                         from agent.attachments import extract_text_from_bytes, index_email_attachment
-                        cl = get_current_gmail_client()
+                        cl = get_current_gmail_client(user_id=user_id)
                         raw_b = cl.get_attachment(open_id, o_att["attachment_id"])
                         if raw_b:
                             extracted_txt, _ = extract_text_from_bytes(raw_b, fn, o_att.get("mime_type"))
@@ -249,7 +249,7 @@ def answer_grounded_rag(
         try:
             from routers.emails import get_current_gmail_client
             from agent.attachments import extract_text_from_bytes, index_email_attachment
-            cl = get_current_gmail_client()
+            cl = get_current_gmail_client(user_id=user_id)
             recent_res = cl.list_messages(max_results=5)
             msgs = recent_res.get("messages", []) if isinstance(recent_res, dict) else []
             for r_msg in msgs:

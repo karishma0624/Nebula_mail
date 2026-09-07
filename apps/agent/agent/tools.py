@@ -195,7 +195,7 @@ def search_emails(args: SearchEmailsInput, user_id: Optional[str] = None, reques
         retries = 1
         for attempt in range(retries + 1):
             try:
-                client = get_current_gmail_client()
+                client = get_current_gmail_client(user_id=uid)
                 list_res = client.list_messages(folder=args.folder or "inbox", query=query_str, max_results=25)
                 raw_messages = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
                 # Filter against restricted senders
@@ -254,7 +254,7 @@ def open_email(args: OpenEmailInput, user_id: Optional[str] = None, request_id: 
     last_err = None
     for attempt in range(retries + 1):
         try:
-            client = get_current_gmail_client()
+            client = get_current_gmail_client(user_id=uid)
             msg = client.get_message(args.email_id)
             res = {"email_id": args.email_id, "email": msg}
             log_tool_audit("open_email", args.model_dump(), res, "executed", user_id=uid, request_id=request_id)
@@ -459,7 +459,7 @@ def list_recent(args: ListRecentInput, user_id: Optional[str] = None, request_id
 
     if not messages:
         try:
-            client = get_current_gmail_client()
+            client = get_current_gmail_client(user_id=uid)
             list_res = client.list_messages(folder=args.folder, query="", max_results=args.limit)
             raw_messages = list_res.get("messages", []) if isinstance(list_res, dict) else list_res
             if supabase and uid and raw_messages:
@@ -495,7 +495,7 @@ def fill_form(args: FillFormInput, user_id: Optional[str] = None, request_id: Op
     uid = user_id or get_current_user_id()
     client = None
     try:
-        client = get_current_gmail_client()
+        client = get_current_gmail_client(user_id=uid)
     except Exception:
         pass
 

@@ -1,11 +1,10 @@
 import { supabase } from './supabaseClient';
 import { useMailStore } from './store';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+import { authFetch, setSessionToken, AGENT_API_URL } from './api';
 
 export async function performLogout(): Promise<boolean> {
   try {
-    const res = await fetch(`${AGENT_API_URL}/auth/logout`, {
+    const res = await authFetch(`${AGENT_API_URL}/auth/logout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -17,6 +16,9 @@ export async function performLogout(): Promise<boolean> {
   } catch (err) {
     console.warn('Backend logout call failed or offline:', err);
   }
+
+  // Clear local session token and cookies
+  setSessionToken(null);
 
   // Clear Supabase session if initialized
   if (supabase) {

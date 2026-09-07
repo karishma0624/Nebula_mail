@@ -1,7 +1,7 @@
 import uuid
 import datetime
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from googleapiclient.discovery import build
@@ -21,9 +21,11 @@ class RejectMeetingRequest(BaseModel):
     meeting_draft_id: uuid.UUID
 
 @router.post("/reject_meeting")
-def reject_meeting(req: RejectMeetingRequest):
+def reject_meeting(req: RejectMeetingRequest, request: Request = None):
     from db.supabase_client import get_supabase, get_current_user_id, ensure_default_user_id
-    uid = get_current_user_id() or ensure_default_user_id()
+    from auth.session import get_session_from_request
+    session = get_session_from_request(request) if request is not None else None
+    uid = (session.get("user_id") if session else None) or get_current_user_id() or ensure_default_user_id()
     supabase = get_supabase()
     if supabase and uid:
         try:
@@ -33,7 +35,7 @@ def reject_meeting(req: RejectMeetingRequest):
     return {"status": "rejected", "meeting_draft_id": str(req.meeting_draft_id)}
 
 @router.post("/confirm_meeting")
-def confirm_meeting(req: ConfirmMeetingRequest):
+def confirm_meeting(req: ConfirmMeetingRequest, request: Request = None):
     """
     POST /calendar/confirm_meeting { meeting_draft_id }
     Crash-safe, idempotent meeting confirmation:
@@ -46,7 +48,9 @@ def confirm_meeting(req: ConfirmMeetingRequest):
     - If email fails, Calendar event is preserved
     """
     from db.supabase_client import get_supabase, get_current_user_id, ensure_default_user_id
-    uid = get_current_user_id() or ensure_default_user_id()
+    from auth.session import get_session_from_request, get_user_credentials
+    session = get_session_from_request(request) if request is not None else None
+    uid = (session.get("user_id") if session else None) or get_current_user_id() or ensure_default_user_id()
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Database client unavailable")
@@ -111,7 +115,7 @@ def confirm_meeting(req: ConfirmMeetingRequest):
                 raise HTTPException(status_code=409, detail="Meeting state conflict on retry")
 
     # 2. Setup Google Calendar service
-    creds = get_credentials_for_user(uid)
+    creds = get_user_credentials(uid) or get_credentials_for_user(uid)
     if not creds and email_router._cached_credentials:
         creds = email_router._cached_credentials
 

@@ -1,6 +1,7 @@
 import os
 import datetime
 from typing import Optional, Dict, Any
+# pyrefly: ignore [missing-import]
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -118,23 +119,29 @@ def exchange_code_for_credentials(code: str, state: Optional[str] = None) -> Opt
     return token_data
 
 def get_credentials_for_user(user_id: str) -> Optional[Credentials]:
+    if not user_id:
+        return None
     supabase = get_supabase()
     if not supabase:
         return None
     
-    response = supabase.table("oauth_tokens").select("*").eq("user_id", user_id).eq("provider", "google").execute()
-    if not response.data or len(response.data) == 0:
+    try:
+        response = supabase.table("oauth_tokens").select("*").eq("user_id", user_id).eq("provider", "google").execute()
+        if not response.data or len(response.data) == 0:
+            return None
+        
+        token_record = response.data[0]
+        creds = Credentials(
+            token=token_record["access_token"],
+            refresh_token=token_record.get("refresh_token"),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=settings.GOOGLE_CLIENT_ID,
+            client_secret=settings.GOOGLE_CLIENT_SECRET,
+            scopes=token_record.get("scope", "").split(" ")
+        )
+    except Exception as e:
+        print(f"[OAuth] Failed to retrieve tokens for user {user_id}: {e}")
         return None
-    
-    token_record = response.data[0]
-    creds = Credentials(
-        token=token_record["access_token"],
-        refresh_token=token_record.get("refresh_token"),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=settings.GOOGLE_CLIENT_ID,
-        client_secret=settings.GOOGLE_CLIENT_SECRET,
-        scopes=token_record.get("scope", "").split(" ")
-    )
     
     # Refresh if expired
     if creds.expired and creds.refresh_token:

@@ -20,8 +20,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { useMailStore } from '../../lib/store';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -89,7 +88,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onEdit }) => 
     if (feedbackRating === rating) return;
     setFeedbackRating(rating);
     try {
-      await fetch(`${AGENT_API_URL}/feedback`, {
+      await authFetch(`${AGENT_API_URL}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

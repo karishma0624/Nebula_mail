@@ -1,6 +1,5 @@
 import { UIContext, ToolCall, Citation } from './types';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+import { authFetch, AGENT_API_URL } from './api';
 
 interface StreamChatOptions {
   message: string;
@@ -28,7 +27,7 @@ export async function streamChatAssistant({
   const controller = new AbortController();
 
   try {
-    const response = await fetch(`${AGENT_API_URL}/chat`, {
+    const response = await authFetch(`${AGENT_API_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -373,7 +373,7 @@ def resolve_target_email_for_reply(desc: str, sender_hint: Optional[str] = None,
     # 1. Check live Gmail client
     try:
         from routers.emails import get_current_gmail_client
-        client = get_current_gmail_client()
+        client = get_current_gmail_client(user_id=user_id)
         if client:
             q_parts = []
             if sender_hint:
@@ -707,7 +707,7 @@ def parse_deterministic_intent(
             if not target_id:
                 try:
                     from routers.emails import get_current_gmail_client
-                    cl = get_current_gmail_client()
+                    cl = get_current_gmail_client(user_id=user_id)
                     if cl:
                         s_res = cl.list_messages(folder="inbox", query="form OR forms.gle OR docs.google.com/forms", max_results=5)
                         msgs = s_res.get("messages", []) if isinstance(s_res, dict) else s_res

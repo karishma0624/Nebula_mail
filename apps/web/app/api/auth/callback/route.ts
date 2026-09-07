@@ -35,8 +35,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(`/?auth_error=token_exchange_failed`, request.url));
     }
 
-    // Success! Redirect to home / inbox
-    return NextResponse.redirect(new URL('/?auth_success=true', request.url));
+    const data = await response.json();
+    const sessionToken = data.session_token || '';
+    const email = data.email || '';
+
+    // Success! Redirect to home / inbox with session token
+    const redirectUrl = new URL('/?auth_success=true', request.url);
+    if (sessionToken) {
+      redirectUrl.searchParams.set('session_token', sessionToken);
+    }
+    if (email) {
+      redirectUrl.searchParams.set('email', email);
+    }
+
+    const res = NextResponse.redirect(redirectUrl);
+    if (sessionToken) {
+      res.cookies.set('nebula_session_token', sessionToken, {
+        path: '/',
+        maxAge: 30 * 86400,
+        sameSite: 'lax',
+      });
+    }
+    return res;
   } catch (err: any) {
     console.error('Callback handling error:', err);
     return NextResponse.redirect(new URL(`/?auth_error=server_error`, request.url));

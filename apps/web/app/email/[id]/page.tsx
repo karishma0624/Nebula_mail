@@ -3,8 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useMailStore } from '../../../lib/store';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+import { authFetch, AGENT_API_URL } from '../../../lib/api';
 
 export default function EmailDetailPage() {
   const router = useRouter();
@@ -19,7 +18,7 @@ export default function EmailDetailPage() {
       setOpenEmail(found);
       router.replace('/');
     } else {
-      fetch(`${AGENT_API_URL}/emails/${id}`)
+      authFetch(`${AGENT_API_URL}/emails/${id}`)
         .then((res) => res.json())
         .then((data) => {
           if (data && data.id) {

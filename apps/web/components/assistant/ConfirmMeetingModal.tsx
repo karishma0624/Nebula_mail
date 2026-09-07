@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useMailStore } from '../../lib/store';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 import { ShieldAlert, Calendar, Clock, Users, Video, X, Check, AlertCircle, ExternalLink } from 'lucide-react';
 
 const isValidUUID = (id?: string | null): boolean => {
@@ -49,8 +50,7 @@ export const ConfirmMeetingModal: React.FC = () => {
     setIsConfirming(true);
     setErrorMsg(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/calendar/confirm_meeting`, {
+      const response = await authFetch(`${AGENT_API_URL}/calendar/confirm_meeting`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,8 +91,7 @@ export const ConfirmMeetingModal: React.FC = () => {
     const activeMeeting = useMailStore.getState().meetingDraft;
     if (activeMeeting?.id && isValidUUID(activeMeeting.id)) {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-        fetch(`${apiUrl}/calendar/reject_meeting`, {
+        authFetch(`${AGENT_API_URL}/calendar/reject_meeting`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

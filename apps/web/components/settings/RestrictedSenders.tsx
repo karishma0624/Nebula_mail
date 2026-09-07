@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { Shield, ShieldAlert, Plus, Trash2, Check, AlertCircle, Lock, RefreshCw } from 'lucide-react';
-import { RestrictedSender } from '../../lib/types';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
+
+interface RestrictedSender {
+  id: string;
+  user_id: string;
+  email_address: string;
+  label?: string | null;
+  created_at: string;
+}
 
 interface RestrictedSendersProps {
   onClose?: () => void;
@@ -17,13 +25,11 @@ export const RestrictedSenders: React.FC<RestrictedSendersProps> = ({ onClose })
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
-
   const fetchSenders = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${apiUrl}/settings/restricted-senders`);
+      const res = await authFetch(`${AGENT_API_URL}/settings/restricted-senders`);
       if (!res.ok) {
         throw new Error('Failed to load confidential contacts');
       }
@@ -52,7 +58,7 @@ export const RestrictedSenders: React.FC<RestrictedSendersProps> = ({ onClose })
     setSuccess(null);
 
     try {
-      const res = await fetch(`${apiUrl}/settings/restricted-senders`, {
+      const res = await authFetch(`${AGENT_API_URL}/settings/restricted-senders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -84,7 +90,7 @@ export const RestrictedSenders: React.FC<RestrictedSendersProps> = ({ onClose })
     }
 
     try {
-      const res = await fetch(`${apiUrl}/settings/restricted-senders/${id}`, {
+      const res = await authFetch(`${AGENT_API_URL}/settings/restricted-senders/${id}`, {
         method: 'DELETE',
       });
 

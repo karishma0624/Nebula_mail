@@ -19,8 +19,7 @@ import { ChatMessage } from './ChatMessage';
 import { streamChatAssistant } from '../../lib/sse';
 import { executeAssistantToolCall } from './ToolCallExecutor';
 import { CopilotDrawer } from './CopilotDrawer';
-
-const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 
 export const AssistantPanel: React.FC = () => {
   const { 
@@ -248,7 +247,7 @@ export const AssistantPanel: React.FC = () => {
     // Call backend endpoint to truncate and update message in Supabase
     if (activeConversationId) {
       try {
-        await fetch(`${AGENT_API_URL}/conversations/${activeConversationId}/edit-message`, {
+        await authFetch(`${AGENT_API_URL}/conversations/${activeConversationId}/edit-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

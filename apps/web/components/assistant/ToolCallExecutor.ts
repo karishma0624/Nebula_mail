@@ -1,5 +1,6 @@
 import { ToolCall, Email, FilterCriteria } from '../../lib/types';
 import { useMailStore } from '../../lib/store';
+import { authFetch, AGENT_API_URL } from '../../lib/api';
 
 // Staggered typing simulator for smooth copilot UI effect (40-60ms per char)
 async function animateFieldTyping(
@@ -117,10 +118,9 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
         store.setSearchResults(emails, queryDesc, estimate, nextToken);
       } else {
         // Fallback: Query backend directly using the constructed Gmail query
-        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
         store.setLoadingEmails(true);
         try {
-          const res = await fetch(`${apiUrl}/emails/list?folder=${folder}&q=${encodeURIComponent(queryDesc)}&limit=25`);
+          const res = await authFetch(`${AGENT_API_URL}/emails/list?folder=${folder}&q=${encodeURIComponent(queryDesc)}&limit=25`);
           if (res.ok) {
             const data = await res.json();
             store.setSearchResults(
@@ -164,9 +164,8 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
         store.setOpenEmail(foundEmail);
       } else {
         // Fetch specific email from backend if not yet in state
-        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
         try {
-          const res = await fetch(`${apiUrl}/emails/${emailId}`);
+          const res = await authFetch(`${AGENT_API_URL}/emails/${emailId}`);
           if (res.ok) {
             const data = await res.json();
             store.setOpenEmail(data);
@@ -194,9 +193,8 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       const currentSendMode = useMailStore.getState().sendMode;
       if (currentSendMode === 'automatic') {
         console.log('[ToolCallExecutor] Automatic send mode active: sending email directly via /emails/send');
-        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
         try {
-          const response = await fetch(`${apiUrl}/emails/send`, {
+          const response = await authFetch(`${AGENT_API_URL}/emails/send`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
