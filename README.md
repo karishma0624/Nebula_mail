@@ -4,6 +4,19 @@ Nebula Mail is an AI-powered email web application where an intelligent copilot 
 
 ---
 
+### Live Deployment & Demo Links
+- **Web App (Frontend)**: [https://nebula-mail-web-agent.vercel.app](https://nebula-mail-web-agent.vercel.app)
+- **Agent API (Backend)**: [https://nebula-mail-vudv.onrender.com](https://nebula-mail-vudv.onrender.com) (Health status: [https://nebula-mail-vudv.onrender.com/health](https://nebula-mail-vudv.onrender.com/health))
+
+> [!IMPORTANT]
+> **Google OAuth Access Restriction (Authorized Test Users Only)**:  
+> Because Nebula Mail requests sensitive/restricted Google scopes (`gmail.readonly`, `gmail.send`, `gmail.compose`) to interact with live email inboxes, Google Cloud requires unverified applications to operate in **Testing Mode**.
+> - **Test User Requirement**: Only Google accounts explicitly registered as **Test Users** in the Google Cloud Console OAuth consent screen can authenticate and log into the live deployment.
+> - **Arbitrary Accounts Blocked**: Any external Google account not yet added to the test user list will be blocked by Google with an `Access blocked: authorization error (error 403: access_denied)`.
+> - **Evaluation Note**: For graders (`Aswath363`, `akshaiP`, `ashwanthnebula` / KnowLab evaluators) wishing to sign into the live deployment with their own Google account, please share your Gmail address so it can be added to the Google Cloud Console test users list. Alternatively, evaluators can run the project locally or inspect the full live workflow in the [Demo Video](#3-screenshots--demo-video).
+
+---
+
 ## Table of Contents
 - [1. Setup & Run Locally](#1-setup--run-locally)
 - [2. Architecture Decisions & Trade-offs](#2-architecture-decisions--trade-offs)
@@ -126,14 +139,23 @@ The database schema uses PostgreSQL with the `vector` extension. Execute the SQL
      - `openid` & `https://www.googleapis.com/auth/userinfo.email` (user identity)
      - *No broad or full mailbox access (`https://mail.google.com/`) is ever requested.*
 2. Under **Credentials > OAuth 2.0 Client IDs (Web application)**:
-   - **Authorized JavaScript origins**: `http://localhost:3000`
-   - **Authorized redirect URIs**: `http://localhost:3000/api/auth/callback`
+   - **Authorized JavaScript origins**:
+     - Local: `http://localhost:3000`
+     - Production: `https://nebula-mail-web-agent.vercel.app`
+   - **Authorized redirect URIs**:
+     - Local: `http://localhost:3000/api/auth/callback`
+     - Production: `https://nebula-mail-web-agent.vercel.app/api/auth/callback`
 3. **Handling Google's "Unverified App" Warning**:  
    Because the app is in development and hasn't undergone formal public domain verification by Google, reviewers will see the "Google hasn't verified this app" screen upon logging in. To proceed:
    1. Click **"Advanced"** (located in the bottom-left corner of the warning modal).
    2. Click **"Go to Nebula Mail (unsafe)"** (or the project title configured in your console).
    3. Check the requested permission checkboxes for Gmail and Google Calendar.
    4. Click **"Continue"** / **"Allow"** to complete authentication and return to the application.
+4. **Google OAuth Testing Mode & Test User Restrictions**:  
+   Under Google Cloud's security model, apps requesting sensitive Gmail scopes without third-party CASA security assessments and domain verification operate strictly in **Testing Mode**:
+   - Only Google accounts explicitly added under **OAuth consent screen > Test users** can authenticate into either the local or deployed instances.
+   - Any other account attempting login will receive Google's `Access blocked: 403 access_denied`.
+   - To add an evaluator or grader, navigate to **APIs & Services > OAuth consent screen > Test users > + Add Users**, enter their Gmail address, and click Save.
 
 ---
 
