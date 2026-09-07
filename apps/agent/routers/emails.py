@@ -192,6 +192,20 @@ def handle_oauth_callback(code: str = Query(...), state: Optional[str] = Query(N
 
     return {"status": "success", "email": _cached_user_email}
 
+@router.post("/auth/logout")
+@router.get("/auth/logout")
+def logout_user():
+    global _cached_credentials, _cached_user_email
+    _cached_credentials = None
+    _cached_user_email = None
+    supabase = get_supabase()
+    if supabase:
+        try:
+            supabase.table("oauth_tokens").delete().neq("provider", "").execute()
+        except Exception as err:
+            print(f"Notice: Supabase token deletion on logout skipped/failed: {err}")
+    return {"status": "success", "message": "Successfully logged out"}
+
 @router.get("/emails/stats")
 def get_mailbox_stats():
     """Get accurate total and unread counts for inbox, sent, and all Gmail categories."""

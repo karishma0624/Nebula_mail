@@ -48,9 +48,13 @@ interface MailState {
   formModalEmail: Email | null;
   activeConversationId: string | null;
   isCopilotDrawerOpen: boolean;
+  isLogoutModalOpen: boolean;
 
   // Actions
   setAuthenticated: (status: boolean, email?: string) => void;
+  openLogoutModal: () => void;
+  closeLogoutModal: () => void;
+  logout: () => void;
   setView: (view: ViewType) => void;
   setOpenEmail: (email: Email | null) => void;
   setEmails: (emails: Email[]) => void;
@@ -139,10 +143,39 @@ export const useMailStore = create<MailState>((set, get) => ({
   formModalEmail: null,
   activeConversationId: null,
   isCopilotDrawerOpen: false,
+  isLogoutModalOpen: false,
 
   setAuthenticated: (status, email) => set({ 
     isAuthenticated: status, 
     userEmail: email || null 
+  }),
+
+  openLogoutModal: () => set({ isLogoutModalOpen: true }),
+  closeLogoutModal: () => set({ isLogoutModalOpen: false }),
+
+  logout: () => set({
+    isAuthenticated: false,
+    userEmail: null,
+    isLogoutModalOpen: false,
+    emails: [],
+    filteredEmails: [],
+    openEmail: null,
+    activeFilters: {},
+    currentPage: 1,
+    nextPageToken: null,
+    pageTokenHistory: [null],
+    totalMessages: 0,
+    unreadMessages: 0,
+    sentTotal: 0,
+    isSearchActive: false,
+    searchQueryDescription: null,
+    searchResultEstimate: null,
+    composeDraft: initialDraft,
+    isConfirmModalOpen: false,
+    isMeetingModalOpen: false,
+    isBulkSendModalOpen: false,
+    isFormModalOpen: false,
+    currentView: 'inbox',
   }),
 
   setHighlightedEmailId: (id) => set({ highlightedEmailId: id }),

@@ -18,7 +18,7 @@ export const Sidebar: React.FC = () => {
     setView, 
     isAuthenticated, 
     userEmail, 
-    setAuthenticated,
+    openLogoutModal,
     isAssistantOpen,
     toggleAssistant,
     unreadMessages,
@@ -130,16 +130,23 @@ export const Sidebar: React.FC = () => {
               } catch (e) {
                 console.error(e);
               }
+            } else {
+              openLogoutModal();
             }
           }}
-          className={`flex items-center justify-between pt-1 ${!isAuthenticated ? 'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/80 p-2 rounded-xl transition border border-transparent hover:border-slate-300 dark:hover:border-slate-700/60' : ''}`}
+          className={`flex items-center justify-between pt-1 p-2 rounded-xl transition border border-transparent ${
+            !isAuthenticated 
+              ? 'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700/60' 
+              : 'cursor-pointer hover:bg-slate-200/40 dark:hover:bg-slate-800/50 hover:border-slate-200/60 dark:hover:border-slate-700/40'
+          }`}
+          title={isAuthenticated ? 'Click to manage account / log out' : 'Click to connect Gmail'}
         >
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-slate-800 border border-blue-200 dark:border-slate-700 flex items-center justify-center text-xs font-bold text-blue-800 dark:text-slate-300 shrink-0">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 border border-blue-200 dark:border-slate-700 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs">
               {userEmail ? userEmail.charAt(0).toUpperCase() : '?'}
             </div>
             <div className="truncate">
-              <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+              <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate" title={userEmail || undefined}>
                 {userEmail || 'Not Connected'}
               </p>
               <div className="flex items-center gap-1">
@@ -152,14 +159,16 @@ export const Sidebar: React.FC = () => {
           </div>
           {isAuthenticated && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setAuthenticated(false, '');
+                openLogoutModal();
               }}
-              title="Disconnect"
-              className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 transition"
+              title="Log out of Nebula Mail"
+              aria-label="Log out"
+              className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition flex items-center gap-1 group shrink-0"
             >
-              <LogOut size={15} />
+              <LogOut size={15} className="group-hover:scale-110 transition-transform" />
             </button>
           )}
         </div>

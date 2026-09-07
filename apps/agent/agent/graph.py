@@ -778,22 +778,27 @@ def parse_deterministic_intent(
 
     # Feature 2 Evaluator Phrase: "Schedule a meeting with john@example.com tomorrow at 3pm about the project sync and email him the invite with the Meet link"
     is_meeting_request = (
-        ("schedule" in m or "set up" in m or "create" in m)
-        and ("meeting" in m or "google meet" in m or "calendar" in m)
+        ("schedule" in m or "set up" in m or "create" in m or "book" in m)
+        and ("meeting" in m or "google meet" in m or "calendar" in m or "gmeet" in m or "meet" in m)
     )
     if is_meeting_request:
         import uuid, datetime
         emails_found = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", msg)
         attendees = emails_found if emails_found else ["john@example.com"]
 
-        title = "Project Sync"
-        about_match = re.search(r"about\s+(?:the\s+)?(.*?)(?:\s+and\s+email|\s+tomorrow|\s+at|\s*$)", msg, re.IGNORECASE)
+        title = "Google Meet Discussion" if ("gmeet" in m or "google meet" in m) else "Project Sync"
+        about_match = re.search(r"about\s+(?:the\s+)?(.*?)(?:\s+and\s+email|\s+and\s+send|\s+tomorrow|\s+at|\s*$)", msg, re.IGNORECASE)
         if about_match and about_match.group(1).strip():
             title = about_match.group(1).strip().title()
 
-        now = datetime.datetime.now(datetime.timezone.utc)
-        is_today = "today" in m
-        target_day = now if is_today else (now + datetime.timedelta(days=1))
+        # Check timezone hint (e.g. "indian timing", "IST")
+        is_ist = any(k in m for k in ["indian timing", "india timing", "indian time", "india time", "ist"])
+        if is_ist:
+            tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        else:
+            tz = datetime.datetime.now().astimezone().tzinfo or datetime.timezone.utc
+
+        now = datetime.datetime.now(tz)
 
         # Parse hour/minute (e.g. 9pm, 9:00 pm, 3pm, 15:00)
         hour = 15
@@ -810,12 +815,16 @@ def parse_deterministic_intent(
             hour = h
             minute = m_min
 
+        is_today = "today" in m or ("tomorrow" not in m and (hour > now.hour or (hour == now.hour and minute > now.minute)))
+        target_day = now if is_today else (now + datetime.timedelta(days=1))
+
         meeting_start = target_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
         end_time = meeting_start + datetime.timedelta(minutes=30)
 
         display_merid = "PM" if hour >= 12 else "AM"
         display_h = hour % 12 or 12
-        display_time = f"{display_h}:{minute:02d} {display_merid}"
+        display_tz = " IST" if is_ist else ""
+        display_time = f"{display_h}:{minute:02d} {display_merid}{display_tz}"
         when_str = f"today at {display_time}" if is_today else f"tomorrow at {display_time}"
 
         email_draft_id = f"draft-meeting-{uuid.uuid4().hex[:6]}"

@@ -29,7 +29,7 @@ def get_client_config() -> Dict[str, Any]:
         "web": {
             "client_id": settings.GOOGLE_CLIENT_ID or "",
             "client_secret": settings.GOOGLE_CLIENT_SECRET or "",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "auth_uri": "https://accounts.google.com/o/oauth2/v2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
         }
@@ -47,19 +47,14 @@ def get_oauth_flow() -> Optional[Flow]:
     return flow
 
 def get_authorization_url() -> Optional[str]:
-    global _latest_code_verifier
     flow = get_oauth_flow()
     if not flow:
         return None
+    flow.autogenerate_code_verifier = False
     authorization_url, state = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent"
+        prompt="select_account consent"
     )
-    if hasattr(flow, 'code_verifier') and flow.code_verifier:
-        _pending_code_verifiers[state] = flow.code_verifier
-        _latest_code_verifier = flow.code_verifier
-
     return authorization_url
 
 def exchange_code_for_credentials(code: str, state: Optional[str] = None) -> Optional[Dict[str, Any]]:

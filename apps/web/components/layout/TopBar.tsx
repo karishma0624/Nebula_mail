@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Sparkles, Filter, CheckCircle2, AlertCircle, Sun, Moon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, RefreshCw, Sparkles, Filter, CheckCircle2, AlertCircle, Sun, Moon, LogOut, LogIn, ChevronDown } from 'lucide-react';
 import { useMailStore } from '../../lib/store';
 
 interface TopBarProps {
@@ -11,6 +11,18 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const updateTheme = () => {
@@ -34,9 +46,25 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
     setTheme(nextTheme);
     window.dispatchEvent(new Event('themechange'));
   };
+
+  const handleConnectGmail = async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/auth/login-url`);
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      console.error('Failed to initiate login flow:', err);
+    }
+  };
+
   const { 
     currentView, 
     isAuthenticated,
+    userEmail,
+    openLogoutModal,
     isAssistantOpen, 
     toggleAssistant,
     isLoadingEmails,
@@ -180,6 +208,67 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, onSearch }) => {
           <Sparkles size={14} className="text-blue-600 dark:text-cyan-400" />
           <span>Copilot</span>
         </button>
+
+        {/* User Account / Profile Menu with Log Out */}
+        <div className="relative ml-1" ref={userMenuRef}>
+          {isAuthenticated ? (
+            <>
+              <button
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                title={userEmail ? `Account: ${userEmail}` : 'Account options'}
+                aria-label="Account menu"
+                aria-expanded={isUserMenuOpen}
+                className="flex items-center gap-1.5 p-1 pl-1 pr-2 rounded-full border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition shadow-xs"
+              >
+                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-bold text-xs shadow-xs select-none">
+                  {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <ChevronDown size={13} className={`text-slate-500 transition-transform duration-150 ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Account Dropdown */}
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150 select-none">
+                  <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
+                      {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title={userEmail || undefined}>
+                        {userEmail || 'Google Account'}
+                      </p>
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        Gmail Connected
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-1.5">
+                    <button
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        openLogoutModal();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition group"
+                    >
+                      <LogOut size={15} className="group-hover:-translate-x-0.5 transition-transform" />
+                      <span className="font-semibold">Log out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={handleConnectGmail}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition"
+            >
+              <LogIn size={13} />
+              <span>Sign in</span>
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

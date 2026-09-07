@@ -14,6 +14,7 @@ import { AssistantPanel } from '../components/assistant/AssistantPanel';
 import { ConfirmSendModal } from '../components/assistant/ConfirmSendModal';
 import { ConfirmMeetingModal } from '../components/assistant/ConfirmMeetingModal';
 import { BulkSendConfirmModal } from '../components/assistant/BulkSendConfirmModal';
+import { LogoutModal } from '../components/layout/LogoutModal';
 
 const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
 
@@ -290,6 +291,9 @@ export default function MailApp() {
 
       {/* 7. Human-in-the-Loop Form Fill Approval Modal */}
       <FormFillModal />
+
+      {/* 8. Human-in-the-Loop Log Out Confirmation Modal */}
+      <LogoutModal />
     </main>
   );
 }
