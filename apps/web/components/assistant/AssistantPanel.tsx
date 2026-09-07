@@ -133,6 +133,19 @@ export const AssistantPanel: React.FC = () => {
     let accumulatedText = '';
     const preferredLang = typeof window !== 'undefined' ? (localStorage.getItem('nebula_preferred_language') || 'auto') : 'auto';
 
+    // Auto-detect prompt request for automatic mode
+    const lowerText = text.toLowerCase();
+    let currentSendMode = sendMode;
+    if (
+      lowerText.includes('automatic mode') ||
+      lowerText.includes('send automatically') ||
+      lowerText.includes('automatically send') ||
+      lowerText.includes('in automatic')
+    ) {
+      useMailStore.getState().setSendMode('automatic');
+      currentSendMode = 'automatic';
+    }
+
     await streamChatAssistant({
       message: text,
       conversationId: activeConversationId || undefined,
@@ -150,7 +163,7 @@ export const AssistantPanel: React.FC = () => {
         is_search_active: isSearchActive,
         search_query: searchQueryDescription,
         preferred_language: preferredLang !== 'auto' ? preferredLang : undefined,
-        send_mode: sendMode,
+        send_mode: currentSendMode,
         top_emails: (filteredEmails && filteredEmails.length > 0 ? filteredEmails : emails || []).slice(0, 6).map(e => ({
           id: e.id,
           sender: e.sender,

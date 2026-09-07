@@ -286,7 +286,11 @@ def finalize_send(
     # The users.send_mode column is retained in the schema for backward-compatibility but direct sending is removed.
     if is_immediate_send:
         action_desc = "reply" if action_type == "reply" else ("forwarded email" if action_type == "forward" else "email")
-        msg = custom_confirm_msg or f"I've drafted the {action_desc} to {to} and prepared it for your one-click confirmation."
+        mode = (ui_context or {}).get("send_mode")
+        if mode == "automatic":
+            msg = f"I've drafted and automatically sent the {action_desc} to {to}."
+        else:
+            msg = custom_confirm_msg or f"I've drafted the {action_desc} to {to} and prepared it for your one-click confirmation."
         return [
             {"name": "draft_compose", "arguments": draft_args},
             {"name": "prepare_send", "arguments": draft_args}

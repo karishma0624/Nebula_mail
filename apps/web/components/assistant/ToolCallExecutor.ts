@@ -66,12 +66,6 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       }
 
       useMailStore.getState().setIsTypingCompose(false);
-
-      if (useMailStore.getState().sendMode === 'automatic' && name === 'draft_compose') {
-        await new Promise((res) => setTimeout(res, 800));
-        useMailStore.getState().resetComposeDraft();
-        useMailStore.getState().setView('sent');
-      }
       break;
     }
 
@@ -194,11 +188,43 @@ export async function executeAssistantToolCall(toolCall: ToolCall): Promise<void
       const reply_to_id = args.reply_to_id || undefined;
 
       const freshDraft = { draft_id, to, subject, body, thread_id, reply_to_id };
-
-      // FIX 0: Human-in-the-loop confirmation before every send is mandatory and non-negotiable.
-      // Update composeDraft directly and open confirmation modal
       store.setComposeDraft(freshDraft);
-      store.openConfirmModal(freshDraft);
+
+      // Check user's send_mode preference ('confirm' vs 'automatic')
+      const currentSendMode = useMailStore.getState().sendMode;
+      if (currentSendMode === 'automatic') {
+        console.log('[ToolCallExecutor] Automatic send mode active: sending email directly via /emails/send');
+        const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:8000';
+        try {
+          const response = await fetch(`${apiUrl}/emails/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              draft_id: freshDraft.draft_id,
+              to: freshDraft.to,
+              subject: freshDraft.subject,
+              body: freshDraft.body,
+              thread_id: freshDraft.thread_id,
+              reply_to_id: freshDraft.reply_to_id,
+            }),
+          });
+          if (response.ok) {
+            console.log('[ToolCallExecutor] Email dispatched successfully in automatic mode');
+            store.resetComposeDraft();
+            store.setView('sent');
+          } else {
+            const errData = await response.json().catch(() => ({}));
+            console.error('Automatic send failed, falling back to confirm modal:', errData);
+            store.openConfirmModal(freshDraft);
+          }
+        } catch (err) {
+          console.error('Automatic send network error:', err);
+          store.openConfirmModal(freshDraft);
+        }
+      } else {
+        // Confirmation mode: present confirmation modal for human review
+        store.openConfirmModal(freshDraft);
+      }
       break;
     }
 
