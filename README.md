@@ -339,24 +339,52 @@ To ensure rock-solid stability and zero regressions under hiring task evaluation
 
 ## 3. Screenshots / Demo Video
 
-### Interface Screenshots
+### Live Workflow & Real Gmail Integration
 
-#### 1. Primary Inbox & Mail Copilot
+The following screenshots demonstrate the application operating live with full Google OAuth2 authentication, real-time Gmail API communication, human-in-the-loop safety boundaries, and Google Meet integration:
+
+#### 1. Google OAuth2 Authentication & Copilot UI
+Secure Google OAuth2 connection screen requesting least-privilege Gmail scopes (`gmail.readonly`, `gmail.send`, `gmail.compose`). The AI Copilot panel is active and ready to interpret natural language instructions to drive mailbox actions.
+![Google OAuth2 Authentication & Copilot UI](docs/screenshots/07_connect_gmail.png)
+
+#### 2. Human-in-the-Loop Safety Boundary (Transmission Confirmation)
+Intentional safety guardrail in action. When the copilot prepares an email dispatch, irreversible API calls are halted until the user inspects the parsed recipient, subject, and body preview, then explicitly clicks "Confirm & Send".
+![Human-in-the-Loop Send Confirmation Guardrail](docs/screenshots/08_confirm_transmission_guardrail.png)
+
+#### 3. Live Sent Mail & Copilot Email Dispatch
+Natural language prompt (`"compose an email to karishmask2462005@gmail.com sub sample body hello how are you and send"`) processed by the LangGraph agent. The `prepare_send` tool is invoked with confirmation requirement, and the sent message appears synchronously in the live Sent Mail list.
+![Live Sent Mail and Copilot Dispatch](docs/screenshots/09_sent_mail_copilot.png)
+
+#### 4. Automated Google Meet Scheduling & Meeting Invitation Drafting
+Natural language prompt (`"schedule a gmeet for jayakishan.2305044@srec.ac.in and karishmask2462005@gmail.com at 10pm and send the mail"`). The agent invokes `prepare_meeting`, creates a real Google Meet link (`https://meet.google.com/kff-bdgp-edh`), and formats the invitation email in the Email Details view.
+![Google Meet Scheduling and Invitation Drafting](docs/screenshots/10_schedule_meet_copilot.png)
+
+#### 5. Real Gmail Inbox Delivery Verification
+Verification inside the recipient's authentic Google Gmail inbox, demonstrating end-to-end delivery of the AI-scheduled Google Meet invitation with active conference link.
+![Real Gmail Inbox Delivery Verification](docs/screenshots/11_gmail_delivery_verified.png)
+
+---
+
+### Interface & Component Overview
+
+#### 6. Primary Inbox & Mail Copilot
+Overview of the inbox interface showing category filters, live message feeds, search bar, and side-by-side Mail Copilot drawer.
 ![Nebula Mail Inbox View](docs/screenshots/01_inbox_view.png)
 
-#### 2. Compose via Assistant (Typewriter Animation in Progress)
+#### 7. Compose via Assistant (Typewriter Animation in Progress)
+The copilot programmatically opens the compose drawer and writes out the subject and body using a stagger typewriter animation.
 ![Compose via Assistant](docs/screenshots/02_compose_in_progress.png)
 
-#### 3. Search & Filter Applied via Copilot
+#### 8. Search & Filter Applied via Copilot
+Deterministic and semantic search queries executed by the copilot, updating the active filter bar and dynamically filtering email lists.
 ![Search and Filter Applied](docs/screenshots/03_search_filter_applied.png)
 
-#### 4. Human-in-the-Loop Send Confirmation Modal
-![Send Confirmation Modal](docs/screenshots/04_confirm_send_modal.png)
-
-#### 5. Email Detail & Threaded Reply View
+#### 9. Email Detail & Threaded Reply View
+Detailed view of a selected email thread with action buttons (`Reply`, `Forward`) and contextual thread history.
 ![Email Detail & Reply](docs/screenshots/05_reply_threaded_view.png)
 
-#### 6. Dark Mode Theme
+#### 10. Dark Mode Theme
+Full dark mode theme with glassmorphism styling and high-contrast accessibility across all inbox controls and copilot panels.
 ![Dark Mode Theme](docs/screenshots/06_dark_mode.png)
 
 ---
