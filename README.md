@@ -365,25 +365,49 @@ Verification inside the recipient's authentic Google Gmail inbox, demonstrating 
 
 ---
 
+### Advanced Agent Capabilities & Governance
+
+#### 6. Google Form Detection & Auto-Fill Preview (Human Confirmation Boundary)
+When an email contains an embedded Google Form, the agent detects the form URL and extracts relevant user profile fields (Name, Email, Phone). Irreversible form submission is strictly blocked until the user reviews the pre-filled fields in the `Form Auto-Fill Preview` modal and clicks "Confirm & Submit".
+![Google Form Auto-Fill Preview and Guardrail](docs/screenshots/15_form_autofill_preview_modal.png)
+
+#### 7. Context-Aware Email Summarization & In-Context Search
+The Mail Copilot reads the active email (`ui_context.open_email`) and generates structured, concise bullet summaries upon natural language prompt (`"summarize this mail"`), operating alongside live search filters.
+![Context-Aware Email Summarization](docs/screenshots/12_email_summarization_copilot.png)
+
+#### 8. Multilingual Translation via Copilot (Tamil Translation)
+The agent performs instantaneous regional language translation directly in the chat drawer. Demonstrates translating an incoming English Google Payments notification into Tamil (`"translate this google payments mail to tamil"`).
+![Multilingual Copilot Translation](docs/screenshots/16_multilingual_translation_tamil.png)
+
+#### 9. Copilot Settings, Governance & Structural Isolation
+The Copilot Menu & Tools drawer provides granular control over Email Send Mode (`Confirm before sending` vs `Send automatically`), Light/Dark theme switching, Speech Read-Aloud, Language preference, and Confidential Contacts management for database-level structural isolation.
+![Copilot Settings and Governance](docs/screenshots/13_copilot_settings_governance.png)
+
+#### 10. Light Theme UI & Multi-Category Inbox with Form Badges
+Full Light Theme interface showing real-time Gmail category tabs (**Primary**, **Promotions**, **Social**, **Updates**), unread counters, live Gmail sync status, and visual `Form` indicators on emails with embedded forms.
+![Light Theme UI and Category Tabs](docs/screenshots/14_light_theme_category_inbox.png)
+
+---
+
 ### Interface & Component Overview
 
-#### 6. Primary Inbox & Mail Copilot
+#### 11. Primary Inbox & Mail Copilot
 Overview of the inbox interface showing category filters, live message feeds, search bar, and side-by-side Mail Copilot drawer.
 ![Nebula Mail Inbox View](docs/screenshots/01_inbox_view.png)
 
-#### 7. Compose via Assistant (Typewriter Animation in Progress)
+#### 12. Compose via Assistant (Typewriter Animation in Progress)
 The copilot programmatically opens the compose drawer and writes out the subject and body using a stagger typewriter animation.
 ![Compose via Assistant](docs/screenshots/02_compose_in_progress.png)
 
-#### 8. Search & Filter Applied via Copilot
+#### 13. Search & Filter Applied via Copilot
 Deterministic and semantic search queries executed by the copilot, updating the active filter bar and dynamically filtering email lists.
 ![Search and Filter Applied](docs/screenshots/03_search_filter_applied.png)
 
-#### 9. Email Detail & Threaded Reply View
+#### 14. Email Detail & Threaded Reply View
 Detailed view of a selected email thread with action buttons (`Reply`, `Forward`) and contextual thread history.
 ![Email Detail & Reply](docs/screenshots/05_reply_threaded_view.png)
 
-#### 10. Dark Mode Theme
+#### 15. Dark Mode Theme
 Full dark mode theme with glassmorphism styling and high-contrast accessibility across all inbox controls and copilot panels.
 ![Dark Mode Theme](docs/screenshots/06_dark_mode.png)
 
