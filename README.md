@@ -415,7 +415,7 @@ Full dark mode theme with glassmorphism styling and high-contrast accessibility 
 
 ### Demo Video
 - **Demo video with voiceover:** [https://drive.google.com/file/d/1TY_7Tv9X1IsHoJmn5gCiXMv9CJrIftG0/view?usp=sharing](https://drive.google.com/file/d/1TY_7Tv9X1IsHoJmn5gCiXMv9CJrIftG0/view?usp=sharing)
-- **Demo video without voiceover:** [Watch Demo Video](https://drive.google.com/file/d/11PzUHhlXKf0iIGeJdymsX7kZ1mDEn0Wk/view?usp=sharing)
+- **Demo video without voiceover:** [https://drive.google.com/file/d/11PzUHhlXKf0iIGeJdymsX7kZ1mDEn0Wk/view?usp=sharing](https://drive.google.com/file/d/11PzUHhlXKf0iIGeJdymsX7kZ1mDEn0Wk/view?usp=sharing)
 
 *Submission Recording Requirement*: The demonstration video must showcase the AI assistant executing the six core evaluation phrases live against a connected Gmail account:
 1. `"Send an email to john@example.com with subject 'Meeting Tomorrow' and body 'Let's meet at 3pm'"` &rarr; Compose view opens, recipient, subject, and body visibly type out with smooth stagger animation, and the send confirmation modal is prepared.
