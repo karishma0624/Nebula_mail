@@ -1,6 +1,19 @@
-# Nebula Mail
+# agentic-mail-copilot
 
 Nebula Mail is an AI-powered email web application where an intelligent copilot programmatically controls the user interface—navigating views, executing deterministic and semantic inbox searches, composing emails with visible typewriter stagger animations, detecting embedded forms, and scheduling calendar meetings with mandatory human confirmation. The application is built with a modern decoupled stack: a **Next.js 14** (TypeScript, Tailwind CSS, Zustand) frontend client, a **FastAPI** + **LangGraph** Python agent backend streaming UI tool calls via Server-Sent Events (SSE), a **Supabase** (PostgreSQL + pgvector) database enforcing multi-tenant Row Level Security, and **Google Gemini** as the sole LLM and dense vector embedding provider.
+
+This project mirrors the shape of real agent deployment work: a LangGraph orchestration layer (Planner → Tool Execution → Human Approval → Reflection) drives tool calls against Gmail and Calendar APIs, retrieval is grounded in the user's own inbox via pgvector, and every irreversible action (sending an email, booking a meeting) requires explicit human confirmation before it executes.
+
+### Demo Video
+**Demo video:** https://drive.google.com/file/d/1w7lQ3i2ZoqQc4DysAV1QGHVhxQfzdsu8/view?usp=sharing
+
+The demo video shows the assistant handling six core natural-language workflows live against a connected Gmail account:
+1. `"Send an email to john@example.com with subject 'Meeting Tomorrow' and body 'Let's meet at 3pm'"` &rarr; Compose view opens, recipient, subject, and body visibly type out with smooth stagger animation, and the send confirmation modal is prepared.
+2. `"Show me emails from the last 10 days"` &rarr; FilterBar and mail list update to reflect emails received in the last 10 days with resolved date range feedback.
+3. `"Find the email from Sarah about the project update"` &rarr; Search query executes for sender "Sarah" and keyword "project update".
+4. `"Open the latest email from David"` &rarr; Resolves and loads the most recent email from David into the Detail view.
+5. `"Reply to this"` &rarr; With an email open, automatically pre-fills compose with recipient, `Re: [Subject]`, and thread ID.
+6. `"Show only unread emails from this week"` &rarr; Filters list to only unread emails received since the beginning of the week.
 
 ---
 
@@ -8,19 +21,14 @@ Nebula Mail is an AI-powered email web application where an intelligent copilot 
 - **Web App (Frontend)**: [https://nebula-mail-web-agent.vercel.app](https://nebula-mail-web-agent.vercel.app)
 - **Agent API (Backend)**: [https://nebula-mail-vudv.onrender.com](https://nebula-mail-vudv.onrender.com) (Health status: [https://nebula-mail-vudv.onrender.com/health](https://nebula-mail-vudv.onrender.com/health))
 
-> [!IMPORTANT]
-> **Google OAuth Access Restriction (Authorized Test Users Only)**:  
-> Because Nebula Mail requests sensitive/restricted Google scopes (`gmail.readonly`, `gmail.send`, `gmail.compose`) to interact with live email inboxes, Google Cloud requires unverified applications to operate in **Testing Mode**.
-> - **Test User Requirement**: Only Google accounts explicitly registered as **Test Users** in the Google Cloud Console OAuth consent screen can authenticate and log into the live deployment.
-> - **Arbitrary Accounts Blocked**: Any external Google account not yet added to the test user list will be blocked by Google with an `Access blocked: authorization error (error 403: access_denied)`.
-> - **Evaluation Note**: For graders (`Aswath363`, `akshaiP`, `ashwanthnebula` / KnowLab evaluators) wishing to sign into the live deployment with their own Google account, please share your Gmail address so it can be added to the Google Cloud Console test users list. Alternatively, evaluators can run the project locally or inspect the full live workflow in the [Demo Video](#3-screenshots--demo-video).
+> To try the live deployment yourself, message me your Gmail address and I'll add you as a test user (Google requires this for apps that aren't yet publicly verified). Otherwise, the demo video below shows the full live workflow.
 
 ---
 
 ## Table of Contents
 - [1. Setup & Run Locally](#1-setup--run-locally)
 - [2. Architecture Decisions & Trade-offs](#2-architecture-decisions--trade-offs)
-- [3. Screenshots / Demo Video](#3-screenshots--demo-video)
+- [3. Screenshots](#3-screenshots)
 - [4. What I'd Improve With More Time](#4-what-id-improve-with-more-time)
 
 ---
@@ -129,7 +137,7 @@ The database schema uses PostgreSQL with the `vector` extension. Execute the SQL
 ### Step 5: Configure Google OAuth 2.0 & Consent Screen
 1. In the **Google Cloud Console**, navigate to **APIs & Services > OAuth consent screen**:
    - User Type: **External**.
-   - App Name: `Nebula Mail`.
+   - App Name: `agentic-mail-copilot`.
    - Add Test Users: Add the Gmail address you will use for evaluation and testing.
    - Required Scopes: Add only the least-privilege scopes required by the application:
      - `https://www.googleapis.com/auth/gmail.readonly` (read emails and metadata)
@@ -137,7 +145,7 @@ The database schema uses PostgreSQL with the `vector` extension. Execute the SQL
      - `https://www.googleapis.com/auth/gmail.compose` (create and update drafts)
      - `https://www.googleapis.com/auth/calendar.events` (schedule calendar meetings upon user confirmation)
      - `openid` & `https://www.googleapis.com/auth/userinfo.email` (user identity)
-     - *No broad or full mailbox access (`https://mail.google.com/`) is ever requested.*
+     - *Scope Minimization*: Strictly least-privilege scopes are requested; no broad or full mailbox access (`https://mail.google.com/`) is ever requested.
 2. Under **Credentials > OAuth 2.0 Client IDs (Web application)**:
    - **Authorized JavaScript origins**:
      - Local: `http://localhost:3000`
@@ -148,14 +156,14 @@ The database schema uses PostgreSQL with the `vector` extension. Execute the SQL
 3. **Handling Google's "Unverified App" Warning**:  
    Because the app is in development and hasn't undergone formal public domain verification by Google, reviewers will see the "Google hasn't verified this app" screen upon logging in. To proceed:
    1. Click **"Advanced"** (located in the bottom-left corner of the warning modal).
-   2. Click **"Go to Nebula Mail (unsafe)"** (or the project title configured in your console).
+   2. Click **"Go to agentic-mail-copilot (unsafe)"** (or the project title configured in your console).
    3. Check the requested permission checkboxes for Gmail and Google Calendar.
    4. Click **"Continue"** / **"Allow"** to complete authentication and return to the application.
 4. **Google OAuth Testing Mode & Test User Restrictions**:  
    Under Google Cloud's security model, apps requesting sensitive Gmail scopes without third-party CASA security assessments and domain verification operate strictly in **Testing Mode**:
    - Only Google accounts explicitly added under **OAuth consent screen > Test users** can authenticate into either the local or deployed instances.
    - Any other account attempting login will receive Google's `Access blocked: 403 access_denied`.
-   - To add an evaluator or grader, navigate to **APIs & Services > OAuth consent screen > Test users > + Add Users**, enter their Gmail address, and click Save.
+   - To add a test user, navigate to **APIs & Services > OAuth consent screen > Test users > + Add Users**, enter their Gmail address, and click Save.
 
 ---
 
@@ -212,7 +220,7 @@ pytest tests/test_pagination_and_search.py
 ---
 
 ### Known Local-Only Limitations
-- **Shared Free-Tier Rate Limits on Gemini**: Google Gemini enforces free-tier rate limits (15 RPM / 60 RPM shared quota). In Nebula Mail, chat reasoning, email semantic vector embeddings (`gemini-embedding-001` / `text-embedding-004`), and attachment document parsing all share the same API key and in-process token bucket (`agent/rate_limiter.py`). Heavy concurrent testing of search queries and chat prompts can trigger HTTP 429 quota errors. The backend absorbs this with an exponential backoff loop (1s &rarr; 2s &rarr; 4s) before falling back gracefully with `"Assistant is busy right now. Please try again shortly."`
+- **Shared Free-Tier Rate Limits on Gemini**: Google Gemini enforces free-tier rate limits (15 RPM / 60 RPM shared quota). In agentic-mail-copilot, chat reasoning, email semantic vector embeddings (`gemini-embedding-001` / `text-embedding-004`), and attachment document parsing all share the same API key and in-process token bucket (`agent/rate_limiter.py`). Heavy concurrent testing of search queries and chat prompts can trigger HTTP 429 quota errors. The backend absorbs this with an exponential backoff loop (1s &rarr; 2s &rarr; 4s) before falling back gracefully with `"Assistant is busy right now. Please try again shortly."`
 - **Pub/Sub Push vs. Polling Fallback**: Real-time push delivery via Google Cloud Pub/Sub requires a publicly accessible HTTPS endpoint (via ngrok or cloud deployment). When running on localhost without an ingress tunnel, the application automatically uses its built-in 15-second polling fallback to synchronize Gmail state without manual intervention.
 
 ---
@@ -220,7 +228,7 @@ pytest tests/test_pagination_and_search.py
 ## 2. Architecture Decisions & Trade-offs
 
 ### High-Level Architecture & Backend Separation
-Nebula Mail uses a decoupled architecture separating the user-facing web tier from the AI execution runtime:
+agentic-mail-copilot uses a decoupled architecture separating the user-facing web tier from the AI execution runtime:
 - **Web Client (`apps/web`)**: Built on Next.js 14 (App Router) and TypeScript with Zustand managing global client state. The UI operates reactively: rather than rendering a chatbot that merely replies with text, the client catches Server-Sent Events (SSE) from the backend and executes programmatic UI actions via `ToolCallExecutor.ts`—opening views, applying search filters, and typing out draft fields with smooth typewriter stagger animations.
 - **AI Agent Service (`apps/agent`)**: Built with FastAPI, LangGraph, and Pydantic v2. The agent graph executes through distinct nodes: Planner &rarr; Tool Execution &rarr; Human Approval Boundary &rarr; Reflection / Error Recovery.
 - **Database & Retrieval**: Supabase PostgreSQL with `pgvector` storing user accounts, OAuth tokens, email read-caches, conversation turns, and 768-dimensional document embeddings.
@@ -246,8 +254,8 @@ Calling Gemini directly from Next.js serverless API routes was deliberately reje
                     │        (LangGraph Agentic Graph)         │
                     └──────────────┬───────────────────▲───────┘
                                    │                   │
-                 Gmail & Calendar  │                   │ Real-time Sync
-                 OAuth2 API Calls  │                   │ (Pub/Sub + 15s Poll)
+                  Gmail & Calendar  │                   │ Real-time Sync
+                  OAuth2 API Calls  │                   │ (Pub/Sub + 15s Poll)
                                    ▼                   │
                     ┌──────────────────────────────────┴───────┐
                     │      Google Workspace (Gmail / Meet)     │
@@ -258,7 +266,7 @@ Calling Gemini directly from Next.js serverless API routes was deliberately reje
 ---
 
 ### Human-in-the-Loop Send Confirmation
-Product safety and hiring rubric standards dictate that **an AI assistant must never execute irreversible real-world actions without explicit user consent**.
+Product safety principles dictate that an AI assistant must never execute irreversible real-world actions without explicit user consent.
 
 - **Unified Dispatcher (`finalize_send`)**: Every action capable of initiating an outbound email—direct compose, context-aware "reply to this", forwarded messages, or batch requests—is funneled through a single backend function: `finalize_send()` in `agent/graph.py`.
 - **Mandatory Approval Boundary**: Regardless of whether a user's database preference (`users.send_mode`) is set to `'confirm'` or `'automatic'`, direct unsanctioned sending is neutralized. The backend always emits `draft_compose` followed by `prepare_send`.
@@ -276,7 +284,7 @@ The RAG pipeline retrieves relevant email snippets and attachments to answer que
 ---
 
 ### Restricted Senders & Security Boundaries
-Nebula Mail allows users to mark sensitive contacts as "confidential," preventing the AI assistant from accessing, reading, or acting on their messages.
+agentic-mail-copilot allows users to mark sensitive contacts as "confidential," preventing the AI assistant from accessing, reading, or acting on their messages.
 
 - **Postgres View Enforcement**: The application enforces this at the database query layer via `agent_visible_emails` and `agent_visible_attachments`. The view excludes messages where the sender or any recipient matches a normalized address in `restricted_senders`.
 - **Why `security_invoker = true` Matters**: Standard PostgreSQL views execute with the permissions of the view's creator (`security_definer`), which inadvertently bypasses Row Level Security policies for the active user. Defining the view with `WITH (security_invoker = true)` ensures PostgreSQL evaluates the view using the querying user's security context (`auth.uid() = user_id`), maintaining multi-tenant RLS boundaries.
@@ -292,7 +300,7 @@ Throughout development, the Supabase database contained live application records
 ---
 
 ### Real Gmail Integration Over Mock/Seed Data
-Rather than simulating email behavior using mock in-memory arrays or synthetic seed JSON files, Nebula Mail integrates directly against the live **Google Gmail API** using OAuth 2.0:
+Rather than simulating email behavior using mock in-memory arrays or synthetic seed JSON files, agentic-mail-copilot integrates directly against the live **Google Gmail API** using OAuth 2.0:
 - **Authentic Fidelity**: Real Gmail integration ensures genuine MIME message generation, authentic RFC 2822 timestamps, valid thread headers (`Message-ID`, `In-Reply-To`, `References`), and real label taxonomies (`UNREAD`, `INBOX`, `SENT`).
 - **Reliable Evaluation**: Demonstrating live natural-language queries against genuine pre-existing inbox emails provides a verifiable, deterministic demo that exercises real token refresh cycles, network latency, and API error states.
 
@@ -308,36 +316,30 @@ Email content frequently contains untrusted or adversarial text.
 ### Notable Bugs Found & Fixed During Development
 The following bugs were diagnosed and resolved during development:
 
-1. **Frontend-Generated Placeholder ID in Meeting Confirmation**:
-   - *What Broke*: The frontend was sending a client-generated temporary string (e.g. `draft-meeting-123`) to `POST /calendar/confirm_meeting` instead of the database-generated UUID, causing PostgreSQL UUID parsing errors.
-   - *The Fix*: Updated `prepare_meeting` to return the canonical database UUID (`meeting_drafts.id`), and added Pydantic UUID validation returning HTTP 422 for malformed IDs.
-2. **Datetime Serialization Silently Breaking Audit Logging**:
+1. **Datetime Serialization Silently Breaking Audit Logging**:
    - *What Broke*: Python `datetime.datetime` objects passed in `agent_tool_calls.arguments` caused Supabase JSON serialization to fail with `TypeError: Object of type datetime is not JSON serializable`, silently dropping audit logs.
    - *The Fix*: Implemented recursive ISO-8601 formatting across all tool call payloads and error contexts prior to database persistence in `db/supabase_client.py` and `agent/pii.py`.
-3. **Literal Placeholder String Used as Message ID in Form-Fill Flow**:
-   - *What Broke*: A hardcoded test fixture string (`seed-form-msg-id`) leaked into the form detection handler, causing Gmail API calls with an invalid message ID.
-   - *The Fix*: Refactored `fill_form` to resolve the actual Gmail message ID from `ui_context.open_email` and fetch the real Google Form URL dynamically from parsed message headers.
-4. **Intent-Routing Keyword Collisions Causing Wrong Tool Execution**:
-   - *What Broke*: User commands like *"reply to john regarding the form saying I will fill later"* matched the `"form"` keyword, erroneously triggering `fill_form` instead of drafting a reply.
-   - *The Fix*: Re-architected intent parsing with strict precedence—explicit form-completion commands ("fill out", "complete form") invoke `fill_form`, while conversational replies mentioning forms route safely to `draft_compose`.
-5. **"Reply to X" Initially Drafting a New Email Instead of a Threaded Reply**:
+2. **"Reply to X" Initially Drafting a New Email Instead of a Threaded Reply**:
    - *What Broke*: Natural language reply requests were missing `thread_id` and `In-Reply-To`/`References` headers, creating disconnected new threads in Gmail.
    - *The Fix*: Extracted `thread_id` and message `id` from `ui_context.open_email`, ensuring the outgoing MIME payload correctly threads into the existing Gmail conversation.
-6. **Conversation Memory Not Persisting Turn-to-Turn**:
-   - *What Broke*: Multi-turn conversational context was lost when users navigated between views because chat history was held in ephemeral component state.
-   - *The Fix*: Persisted chat sessions in Supabase (`conversations` and `messages` tables) and hydrated `conversation_id` and history into LangGraph on each turn.
+
+#### Other bugs fixed along the way:
+- **Frontend-Generated Placeholder ID in Meeting Confirmation**: Replaced client-generated temporary strings (`draft-meeting-123`) with canonical database UUIDs (`meeting_drafts.id`) and added Pydantic UUID validation returning HTTP 422 for malformed IDs.
+- **Literal Placeholder String in Form-Fill Flow**: Resolved the actual Gmail message ID from `ui_context.open_email` and fetched the real Google Form URL dynamically from parsed message headers instead of leaking a hardcoded test fixture ID (`seed-form-msg-id`).
+- **Intent-Routing Keyword Collisions**: Re-architected intent parsing with strict precedence so conversational replies mentioning forms route safely to `draft_compose` rather than erroneously triggering `fill_form`.
+- **Conversation Memory Not Persisting Turn-to-Turn**: Persisted chat sessions to Supabase (`conversations` and `messages` tables) and hydrated `conversation_id` and history into LangGraph on each turn to prevent state loss across navigation.
 
 ---
 
 ### Explicitly Deferred & Descoping Decisions
-To ensure rock-solid stability and zero regressions under hiring task evaluation criteria:
+To keep the six core agent workflows reliable, I deliberately deferred:
 - **Hybrid (Dense + BM25) Retrieval**: Descoping hybrid retrieval in favor of single-stage dense vector search avoided dual-index synchronization overhead while fully satisfying citation requirements.
-- **Multi-Message Accordion Thread View**: Displaying individual messages with reply thread context was prioritized over building an accordion thread view, ensuring the six core evaluation flows worked reliably.
-- **Exclusive Cloud Pub/Sub Webhooks**: Relying solely on Pub/Sub would require reviewers to configure external tunnels (such as ngrok); prioritizing an automatic 15-second polling fallback ensured a zero-friction local evaluator experience.
+- **Multi-Message Accordion Thread View**: Displaying individual messages with reply thread context was prioritized over building an accordion thread view, ensuring the core agent workflows worked reliably.
+- **Exclusive Cloud Pub/Sub Webhooks**: Relying solely on Pub/Sub would require reviewers to configure external tunnels (such as ngrok); prioritizing an automatic 15-second polling fallback ensured a zero-friction local setup experience.
 
 ---
 
-## 3. Screenshots / Demo Video
+## 3. Screenshots
 
 ### Live Workflow & Real Gmail Integration
 
@@ -413,20 +415,6 @@ Full dark mode theme with glassmorphism styling and high-contrast accessibility 
 
 ---
 
-### Demo Video
-- **Demo video with voiceover:** [https://drive.google.com/file/d/1TY_7Tv9X1IsHoJmn5gCiXMv9CJrIftG0/view?usp=sharing](https://drive.google.com/file/d/1TY_7Tv9X1IsHoJmn5gCiXMv9CJrIftG0/view?usp=sharing)
-- **Demo video without voiceover:** [https://drive.google.com/file/d/1J294qaeaFVoiqJCdnnjV3z40wVBSBM_i/view?usp=sharing](https://drive.google.com/file/d/1J294qaeaFVoiqJCdnnjV3z40wVBSBM_i/view?usp=sharing)
-
-*Submission Recording Requirement*: The demonstration video must showcase the AI assistant executing the six core evaluation phrases live against a connected Gmail account:
-1. `"Send an email to john@example.com with subject 'Meeting Tomorrow' and body 'Let's meet at 3pm'"` &rarr; Compose view opens, recipient, subject, and body visibly type out with smooth stagger animation, and the send confirmation modal is prepared.
-2. `"Show me emails from the last 10 days"` &rarr; FilterBar and mail list update to reflect emails received in the last 10 days with resolved date range feedback.
-3. `"Find the email from Sarah about the project update"` &rarr; Search query executes for sender "Sarah" and keyword "project update".
-4. `"Open the latest email from David"` &rarr; Resolves and loads the most recent email from David into the Detail view.
-5. `"Reply to this"` &rarr; With an email open, automatically pre-fills compose with recipient, `Re: [Subject]`, and thread ID.
-6. `"Show only unread emails from this week"` &rarr; Filters list to only unread emails received since the beginning of the week.
-
----
-
 ## 4. What I'd Improve With More Time
 
 1. **Hardening Google Cloud Pub/Sub Real-Time Sync**: Automate the Pub/Sub subscription registration and renewal handshake in code, eliminating the need for the 15-second polling fallback when running in cloud environments.
@@ -438,10 +426,3 @@ Full dark mode theme with glassmorphism styling and high-contrast accessibility 
 7. **Rich Text Formatting & Attachment Upload**: Upgrade the compose drawer from plain text to a rich WYSIWYG editor (such as TipTap or Lexical) with formatting controls and drag-and-drop file attachment uploads mapped directly to Gmail API MIME attachments.
 8. **Langfuse Observability & Reflection Tracing with PII Masking**: Integrate Langfuse telemetry to trace the complete LangGraph agent workflow (Planner decisions, tool executions, reflection loops, token consumption, and latency) with automated reflection masking hooks to ensure confidential email bodies, recipient addresses, and sensitive user data are masked prior to ingestion by external observability dashboards.
 9. **Multi-Tenant Concurrent Session Isolation**: Fully decouple multi-tenant session state to support simultaneous, concurrent authenticated sessions across different client devices and browsers without cross-user token interference or shared logout states.
-
----
-
-## Collaborators & Least-Privilege Scope Notice
-
-- **Repository Collaborators**: Access has been granted to `Aswath363`, `akshaiP`, and `ashwanthnebula`.
-- **Scope Minimization Statement**: Google OAuth requests strictly least-privilege scopes (`https://www.googleapis.com/auth/gmail.readonly`, `https://www.googleapis.com/auth/gmail.send`, and `https://www.googleapis.com/auth/gmail.compose`), never full mailbox access.
